@@ -26,11 +26,11 @@ INSTALL = @INSTALL@
 
 all:
 	sed -e 's%pidfile=.*%pidfile=$(localstatedir)/run/piler/piler.pid%g' \
-	-e 's%workdir=.*%workdir=$(localstatedir)/spool/piler/tmp%g' \
-	-e 's%queuedir=.*%queuedir=$(localstatedir)/piler/queue%g' < $(srcdir)/example.conf > $(srcdir)/piler.conf
+	-e 's%iv=.*%iv=@iv@%g' \
+	-e 's%workdir=.*%workdir=$(localstatedir)/piler/tmp%g' < $(srcdir)/example.conf > $(srcdir)/piler.conf
 
 install:
-	if [ ! -f "$(DESTDIR)$(sysconfdir)/piler.conf" ]; then $(INSTALL) -m 0640 $(srcdir)/piler.conf $(DESTDIR)$(sysconfdir)/piler.conf; chgrp $(CLAPF_GROUP) $(DESTDIR)$(sysconfdir)/piler.conf; fi
+	if [ ! -f "$(DESTDIR)$(sysconfdir)/piler.conf" ]; then $(INSTALL) -m 0640 -g $(RUNNING_GROUP) $(srcdir)/piler.conf $(DESTDIR)$(sysconfdir)/piler.conf; fi
 
 clean:
 	rm -f piler.conf cron.jobs
