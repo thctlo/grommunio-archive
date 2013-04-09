@@ -41,7 +41,6 @@ struct passwd *pwd;
 struct child children[MAXCHILDREN];
 
 
-signal_func *set_signal_handler(int signo, signal_func * func);
 static void takesig(int sig);
 static void child_sighup_handler(int sig);
 static void child_main(struct child *ptr);
@@ -53,23 +52,6 @@ void fatal(char *s);
 void initialise_configuration();
 
 
-
-
-/*
- * most of the preforking code was taken from the tinyproxy project
- */
-
-signal_func *set_signal_handler(int signo, signal_func * func){
-   struct sigaction act, oact;
-
-   act.sa_handler = func;
-   sigemptyset (&act.sa_mask);
-   act.sa_flags = 0;
-
-   if(sigaction(signo, &act, &oact) < 0) return SIG_ERR;
-
-   return oact.sa_handler;
-}
 
 
 static void takesig(int sig){
@@ -115,12 +97,6 @@ static void child_sighup_handler(int sig){
    if(sig == SIGHUP){
       received_sighup = 1;
    }
-}
-
-
-void *get_in_addr(struct sockaddr *sa){
-   if(sa->sa_family == AF_INET) return &(((struct sockaddr_in*)sa)->sin_addr);
-   return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
 
@@ -368,7 +344,7 @@ void initialise_configuration(){
 
 int main(int argc, char **argv){
    int i, rc, yes=1, daemonise=0;
-   char port_string[6];
+   char port_string[8];
    struct addrinfo hints, *res;
 
 
