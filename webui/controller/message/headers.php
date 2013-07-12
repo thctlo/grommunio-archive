@@ -37,7 +37,7 @@ class ControllerMessageHeaders extends Controller {
 
       $this->data['piler_id'] = $this->model_search_message->get_piler_id_by_id($this->data['id']);
 
-      $this->data['data'] = $this->model_search_message->get_message_headers($this->data['piler_id']);
+      $this->data['message'] = $this->model_search_message->get_message_headers($this->data['piler_id']);
 
       $this->render();
    }
