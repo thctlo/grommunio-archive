@@ -29,6 +29,11 @@ class ControllerLdapList extends Controller {
 
       $this->data['entries'] = array();
 
+      $this->data['id'] = -1;
+
+      $this->data['ldap_types'] = Registry::get('ldap_types');
+
+      if(isset($this->request->get['id'])) { $this->data['id'] = $this->request->get['id']; }
 
       /* check if we are admin */
 
@@ -37,11 +42,21 @@ class ControllerLdapList extends Controller {
          if($this->request->server['REQUEST_METHOD'] == 'POST') {
             if($this->validate() == true) {
 
-               if($this->model_saas_ldap->add($this->request->post) == 1) {
-                  $this->data['x'] = $this->data['text_successfully_added'];
-               } else {
-                  $this->template = "common/error.tpl";
-                  $this->data['errorstring'] = $this->data['text_failed_to_add'];
+               if(isset($this->request->post['id'])) {
+                  if($this->model_saas_ldap->update($this->request->post) == 1) {
+                     $this->data['x'] = $this->data['text_successfully_modified'];
+                  } else {
+                     $this->template = "common/error.tpl";
+                     $this->data['errorstring'] = $this->data['text_failed_to_modify'];
+                  }
+               }
+               else {
+                  if($this->model_saas_ldap->add($this->request->post) == 1) {
+                     $this->data['x'] = $this->data['text_successfully_added'];
+                  } else {
+                     $this->template = "common/error.tpl";
+                     $this->data['errorstring'] = $this->data['text_failed_to_add'];
+                  }
                }
             }
             else {
@@ -50,7 +65,12 @@ class ControllerLdapList extends Controller {
             } 
          }
 
-         $this->data['entries'] = $this->model_saas_ldap->get();
+         if(isset($this->request->get['id'])) {
+            $this->data['a'] = $this->model_saas_ldap->get($this->request->get['id']);
+         }
+         else {
+            $this->data['entries'] = $this->model_saas_ldap->get();
+         }
 
       }
       else {
