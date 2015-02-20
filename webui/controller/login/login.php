@@ -47,6 +47,12 @@ class ControllerLoginLogin extends Controller {
                header("Location: " . SITE_URL . "index.php?route=login/ga");
                exit;
             }
+
+            else if($session->get("four_eyes") == 1) {
+               header("Location: " . SITE_URL . "index.php?route=login/foureyes");
+               exit;
+            }
+
             else {
                $data = $session->get("auth_data");
                $this->model_user_auth->apply_user_auth_session($data);
