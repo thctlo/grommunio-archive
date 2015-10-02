@@ -26,13 +26,14 @@
 
         <table id="search1" class="table table-striped table-condensed">
             <thead>
-                <th><?php print $_['text_folder']; ?> <?php print $_['text_name']; ?></th>
+                <th><?php print $text_folder; ?></th>
                 <th>&nbsp;</th>
             </thead>
             <tbody>
       <?php foreach($extra_folders as $folder) { ?>
                 <tr>
                     <td><?php print $folder['name']; ?></td>
+                    <td><a href="index.php?route=folder/edit&id=<?php print $folder['id']; ?>"><?php print $text_edit; ?></a></td>
                     <td><a href="/folders.php?id=<?php print $folder['id']; ?>&remove=1"><?php print $text_remove; ?></a></td>
                 </tr>
       <?php } ?>
