@@ -39,9 +39,9 @@
         <?php print $menu; ?>
     </div>
 
-   <div id="messagebox1" class="audit audit-info"></div>
+    <div id="messagebox1" class="audit audit-info"></div>
 
-   <div id="piler1" class="container">
+    <div id="piler1" class="container">
 
       <div id="searchcontainer">
 
@@ -60,8 +60,8 @@
                 </div>
             </div>
         </div>
-   </div>
-   <div id="mainscreen">
+    </div>
+    <div id="mainscreen">
 
       <div id="mailleftcontainer">
       </div>
@@ -92,7 +92,7 @@
 
       </div>
 
-   </div>
+    </div>
 
 <?php if(Registry::get('auditor_user') == 1 || Registry::get('data_officer') == 1) { ?>
 
