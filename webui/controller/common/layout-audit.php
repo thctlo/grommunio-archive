@@ -1,4 +1,4 @@
-<?php  
+<?php
 
 class ControllerCommonLayoutAudit extends Controller {
 
@@ -27,6 +27,3 @@ class ControllerCommonLayoutAudit extends Controller {
 
 
 }
-
-
-?>
