@@ -1,0 +1,3 @@
+# The web UI's captcha library ships a Flash player for the audio version; the
+# file is removed from the binary package.
+grommunio-archive source: source-contains-prebuilt-flash-object *

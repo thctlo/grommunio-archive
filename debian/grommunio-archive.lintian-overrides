@@ -1,0 +1,20 @@
+# libpiler.so is private to the piler tools (its soname carries the full version).
+grommunio-archive: package-name-doesnt-match-sonames *
+# The initial upload of a private package.
+grommunio-archive: initial-upload-closes-no-bugs
+# The tools that run as the archive user become setuid through dpkg-statoverride.
+grommunio-archive: maintainer-script-calls-systemctl
+# The web UI is shipped as released: its documentation-like files, bundled fonts
+# and helper scripts stay as they are.
+grommunio-archive: package-contains-documentation-outside-usr-share-doc *
+grommunio-archive: duplicate-font-file *
+grommunio-archive: font-outside-font-dir *
+grommunio-archive: font-in-non-font-package *
+grommunio-archive: truetype-font-prohibits-installable-embedding *
+grommunio-archive: opentype-font-prohibits-installable-embedding *
+grommunio-archive: no-manual-page *
+grommunio-archive: national-encoding *
+grommunio-archive: script-not-executable *
+grommunio-archive: executable-not-elf-or-script *
+# The cron jobs are started by the archive setup and need the archive user.
+grommunio-archive: missing-systemd-timer-for-cron-script *

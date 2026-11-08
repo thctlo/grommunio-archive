@@ -1,0 +1,27 @@
+#!/bin/sh
+set -e
+
+SETUID_TOOLS="pileraget pilerexport pilerget pilerimport pilerstats pilertest reindex"
+
+case "$1" in
+    purge)
+        for t in $SETUID_TOOLS; do
+            dpkg-statoverride --remove "/usr/bin/$t" >/dev/null 2>&1 || true
+        done
+        # The archive itself (/var/lib/grommunio-archive), the database and the
+        # configuration in /etc/grommunio-archive are the administrator's data
+        # and are kept.
+    ;;
+
+    remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    ;;
+
+    *)
+        echo "postrm called with unknown argument '$1'" >&2
+        exit 1
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

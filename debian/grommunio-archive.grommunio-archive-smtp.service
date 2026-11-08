@@ -1,0 +1,16 @@
+[Unit]
+Description=grommunio Archive SMTP service
+Documentation=https://www.mailpiler.org
+After=network.target auditd.service
+
+[Service]
+ExecStart=/usr/sbin/piler-smtp -c /etc/grommunio-archive/grommunio-archive.conf
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+User=groarchive
+Group=groarchive
+
+[Install]
+WantedBy=multi-user.target
+Alias=groarchivesmtp.service piler-smtp.service

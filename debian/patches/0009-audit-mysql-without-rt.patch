@@ -1,0 +1,235 @@
+Keep the audit trail in MySQL when the real-time index is off
+
+piler 1.4.6 moved the audit records to the Manticore real-time index audit1,
+and AUDIT() returns early when RT=0. An installation on the plain Sphinx index
+(as grommunio Archive is) therefore records no audit trail at all, and the
+audit viewer, the CSV export and the per-hour download/restore limits query an
+index that does not exist, hiding the existing records in the MySQL audit
+table. With RT=0, write and read the MySQL audit table as piler 1.3.x did; the
+RT=1 code paths are unchanged.
+
+diff -Naur a/piler-1.4.9/webui/model/audit/audit.php b/piler-1.4.9/webui/model/audit/audit.php
+--- piler-1.4.9/webui/model/audit/audit.php	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/model/audit/audit.php	2026-09-30 07:37:15.216010589 +0200
+@@ -3,6 +3,8 @@
+ class ModelAuditAudit extends Model {
+ 
+    public function search_audit($data = array(), $page = 0) {
++      if(RT == 0) { return $this->search_audit_sql($data, $page); }
++
+       $where = '';
+       $arr = $results = array();
+       $from = 0;
+@@ -106,6 +108,8 @@
+ 
+ 
+    public function print_audit_to_csv() {
++      if(RT == 0) { return $this->print_audit_to_csv_sql(); }
++
+       $actions = array_flip(Registry::get('actions'));
+ 
+       $a = $this->session->get('audit_query');
+@@ -128,6 +132,8 @@
+ 
+       if(MAX_DOWNLOAD_PER_HOUR <= 0 || Registry::get('auditor_user') == 1) { return 1; }
+ 
++      if(RT == 0) { return $this->count_recent_actions_sql(ACTION_DOWNLOAD_MESSAGE) <= MAX_DOWNLOAD_PER_HOUR ? 1 : 0; }
++
+       $session = Registry::get('session');
+ 
+       $email = str_replace('@', '\\\\@', $session->get('email'));
+@@ -144,6 +150,8 @@
+ 
+       if(MAX_RESTORE_PER_HOUR <= 0 || Registry::get('auditor_user') == 1) { return 1; }
+ 
++      if(RT == 0) { return $this->count_recent_actions_sql(ACTION_RESTORE_MESSAGE) <= MAX_RESTORE_PER_HOUR ? 1 : 0; }
++
+       $session = Registry::get('session');
+ 
+       $email = str_replace('@', '\\\\@', $session->get('email'));
+@@ -155,4 +163,154 @@
+       return 0;
+    }
+ 
++
++   /*
++    * Without the real-time index (RT=0, classic Sphinx) there is no audit1
++    * index: AUDIT() writes the MySQL audit table instead, and the methods
++    * below read it back the way piler 1.3.x did.
++    */
++
++   private function search_audit_sql($data = array(), $page = 0) {
++      $where = '';
++      $arr = $results = array();
++      $sort = 'ts';
++      $order = 'DESC';
++      $date1 = $date2 = 0;
++
++      $pagelen = (int)get_page_length();
++      $offset = max(0, (int)$page) * $pagelen;
++
++      $session = Registry::get('session');
++
++      if($data['sort'] == 'user') { $sort = 'email'; }
++      if($data['sort'] == 'ipaddr') { $sort = 'ipaddr'; }
++      if($data['sort'] == 'ref') { $sort = 'meta_id'; }
++      if($data['sort'] == 'action') { $sort = 'action'; }
++      if($data['sort'] == 'description') { $sort = 'description'; }
++
++      if($data['order'] == 1) { $order = 'ASC'; }
++
++      $sortorder = "ORDER BY `$sort` $order";
++
++      if(isset($data['action']) && $data['action'] && $data['action'] != ACTION_ALL) {
++         $where .= $this->append_search_criteria_sql('action', $data['action'], $arr);
++      }
++
++      if(isset($data['ipaddr']) && $data['ipaddr']) {
++         $where .= $this->append_search_criteria_sql('ipaddr', $data['ipaddr'], $arr);
++      }
++
++      if(isset($data['user']) && $data['user']) {
++         $where .= $this->append_search_criteria_sql('email', $data['user'], $arr);
++      }
++
++      if(isset($data['ref']) && $data['ref']) {
++         $where .= $this->append_search_criteria_sql('meta_id', $data['ref'], $arr);
++      }
++
++      if(Registry::get('admin_user') == 0 && RESTRICTED_AUDITOR == 1) {
++         $auditdomains = $session->get('auditdomains');
++         $q = '';
++
++         if(is_array($auditdomains)) {
++            foreach($auditdomains as $v) {
++               if($q) { $q .= ','; }
++               $q .= '?';
++               array_push($arr, $v);
++            }
++         }
++
++         // An auditor restricted to no domain sees nothing.
++         $where .= $q ? " AND domain IN ($q)" : ' AND 1=0';
++      }
++
++      if(isset($data['date1'])) { $date1 = $data['date1']; }
++      if(isset($data['date2'])) { $date2 = $data['date2']; }
++
++      $date = fixup_date_condition('ts', $date1, $date2);
++
++      if($date) { $where .= " AND $date"; }
++
++      if($where) {
++         $where = ' WHERE ' . substr($where, 5);
++      }
++
++      // The list stops at MAX_SEARCH_HITS anyway, so count no further.
++      $query = $this->db->query('SELECT COUNT(*) AS num FROM (SELECT 1 FROM ' . TABLE_AUDIT . " $where LIMIT " . MAX_SEARCH_HITS . ') AS hits', $arr);
++      $total_found = isset($query->row['num']) ? (int)$query->row['num'] : 0;
++
++      $query = $this->db->query('SELECT * FROM ' . TABLE_AUDIT . " $where $sortorder LIMIT $offset,$pagelen", $arr);
++
++      $this->session->set('audit_query', array('where' => $where, 'sortorder' => $sortorder, 'arr' => $arr));
++
++      if(isset($query->rows)) {
++         foreach($query->rows as $a) {
++            $description = str_replace('"', "'", (string)$a['description']);
++
++            // email and ipaddr are stored as received (the name typed into a
++            // failed login, a proxy header), so escape them for the list.
++            $results[] = array(
++               'id' => $a['meta_id'],
++               'piler_id' => '',
++               'action' => $a['action'],
++               'email' => htmlspecialchars($a['email']),
++               'date' => date(DATE_TEMPLATE . ' H:i', $a['ts']),
++               'ipaddr' => htmlspecialchars(DEMO_MODE == 1 ? anonimize_ip_addr($a['ipaddr']) : $a['ipaddr']),
++               'description' => $description,
++               'shortdescription' => make_short_string($description, MAX_CGI_FROM_SUBJ_LEN)
++            );
++         }
++      }
++
++      return array(count($results), $total_found, $results);
++   }
++
++
++   private function print_audit_to_csv_sql() {
++      $actions = array_flip(Registry::get('actions'));
++
++      $a = $this->session->get('audit_query');
++
++      if(isset($a['where']) && isset($a['sortorder']) && isset($a['arr'])) {
++         print 'Date' . DELIMITER . 'ID' . DELIMITER . 'User' . DELIMITER . 'IP-address' . DELIMITER . 'Action' . DELIMITER . 'Piler ID' . DELIMITER . "Description\n";
++
++         $query = $this->db->query('SELECT * FROM ' . TABLE_AUDIT . ' ' . $a['where'] . ' ' . $a['sortorder'], $a['arr']);
++
++         foreach($query->rows as $q) {
++            if(DEMO_MODE == 1) { $q['ipaddr'] = anonimize_ip_addr($q['ipaddr']); }
++
++            print date(DATE_TEMPLATE . ' H:i:s', $q['ts']) . DELIMITER . $q['id'] . DELIMITER . $q['email'] . DELIMITER . $q['ipaddr'] . DELIMITER . $actions[$q['action']] . DELIMITER . $q['meta_id'] . DELIMITER . $q['description'] . "\n";
++         }
++      }
++   }
++
++
++   // The audit helper controller passes tab separated values; a '*' turns a
++   // value into a prefix match.
++   private function append_search_criteria_sql($field = '', $s = '', &$arr = array()) {
++      $str = '';
++
++      foreach(explode("\t", $s) as $v) {
++         if($v == '') { continue; }
++
++         if(strchr($v, '*')) {
++            $str .= " OR `$field` LIKE ?";
++            array_push($arr, preg_replace("/\*.*/", "%", $v));
++         }
++         else {
++            $str .= " OR `$field` = ?";
++            array_push($arr, $v);
++         }
++      }
++
++      return $str ? ' AND (' . substr($str, 4) . ')' : '';
++   }
++
++
++   private function count_recent_actions_sql($action = 0) {
++      $query = $this->db->query('SELECT COUNT(*) AS num FROM ' . TABLE_AUDIT . ' WHERE email=? AND ts > ? AND action=?', array($this->session->get('email'), NOW-3600, $action));
++
++      return isset($query->row['num']) ? (int)$query->row['num'] : 0;
++   }
++
+ }
+diff -Naur a/piler-1.4.9/webui/system/misc.php b/piler-1.4.9/webui/system/misc.php
+--- piler-1.4.9/webui/system/misc.php	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/system/misc.php	2026-09-30 07:37:15.215761280 +0200
+@@ -36,7 +36,7 @@
+ 
+ function AUDIT($action = 0, $email = '', $ipaddr = '', $id = 0, $description = '') {
+ 
+-   if(ENABLE_AUDIT == 0 || RT == 0) { return 0; }
++   if(ENABLE_AUDIT == 0) { return 0; }
+ 
+    $session = Registry::get('session');
+ 
+@@ -49,6 +49,18 @@
+ 
+    $description = htmlspecialchars($description);
+ 
++   // Without the real-time index (RT=0, classic Sphinx) there is no audit1
++   // index to write to, so keep the audit trail in the MySQL audit table as
++   // piler 1.3.x did. IGNORE truncates an over-long value instead of losing
++   // the record under strict SQL mode.
++   if(RT == 0) {
++      $db = Registry::get('db');
++
++      $query = $db->query("INSERT IGNORE INTO " . TABLE_AUDIT . " (ts, email, domain, action, ipaddr, meta_id, description) VALUES(?,?,?,?,?,?,?)", array(time(), $email, isset($a[1]) ? $a[1] : '', (int)$action, $ipaddr, (int)$id, $description));
++
++      return $db->countAffected();
++   }
++
+    $query = $sphxrw->query("INSERT INTO " . SPHINX_AUDIT_INDEX . " (ts, email, action, ipaddr, meta_id, description) VALUES(?,?,?,?,?,?)", array(time(), $email, $action, $ipaddr, $id, $description));
+ 
+    return $sphxrw->countAffected();

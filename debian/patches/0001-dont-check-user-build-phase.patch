@@ -1,0 +1,65 @@
+Description: Do not chown to the piler user while building or installing (Debian's build runs unprivileged; ownership is set by the maintainer scripts).
+Author: grommunio <dev@grommunio.com>
+Origin: vendor
+Forwarded: not-needed
+Last-Update: 2026-09-24
+
+--- a/Makefile.in	2026-06-30 02:03:50.498773348 +0200
++++ b/Makefile.in	2026-06-30 02:09:55.490378374 +0200
+@@ -86,14 +86,14 @@
+ 		$(DESTDIR)$(localstatedir)/piler/export \
+ 		$(DESTDIR)$(localstatedir)/piler/manticore
+ 
+-	$(INSTALL) -d -m 0755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/run
+-	$(INSTALL) -d -m 0700 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/store
+-	$(INSTALL) -d -m 0700 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/imap
+-	$(INSTALL) -d -m 0755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/stat
+-	$(INSTALL) -d -m 0711 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/tmp
+-	$(INSTALL) -d -m 0711 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/error
+-	$(INSTALL) -d -m 0700 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/export
+-	$(INSTALL) -d -m 0700 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(DESTDIR)$(localstatedir)/piler/manticore
++	$(INSTALL) -d -m 0755 $(DESTDIR)$(localstatedir)/piler/run
++	$(INSTALL) -d -m 0700 $(DESTDIR)$(localstatedir)/piler/store
++	$(INSTALL) -d -m 0700 $(DESTDIR)$(localstatedir)/piler/imap
++	$(INSTALL) -d -m 0755 $(DESTDIR)$(localstatedir)/piler/stat
++	$(INSTALL) -d -m 0711 $(DESTDIR)$(localstatedir)/piler/tmp
++	$(INSTALL) -d -m 0711 $(DESTDIR)$(localstatedir)/piler/error
++	$(INSTALL) -d -m 0700 $(DESTDIR)$(localstatedir)/piler/export
++	$(INSTALL) -d -m 0755 $(DESTDIR)$(localstatedir)/piler/manticore
+ 
+ 
+ install-am:
+--- a/src/Makefile.in	2026-06-30 02:03:50.513984097 +0200
++++ b/src/Makefile.in	2026-06-30 02:09:45.872638458 +0200
+@@ -87,13 +87,13 @@
+ 	$(INSTALL) -m 0755 piler $(DESTDIR)$(sbindir)
+ 	$(INSTALL) -m 0755 piler-smtp $(DESTDIR)$(sbindir)
+ 	$(INSTALL) -m 0755 pilerconf $(DESTDIR)$(sbindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerget $(DESTDIR)$(bindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pileraget $(DESTDIR)$(bindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerimport $(DESTDIR)$(bindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerexport $(DESTDIR)$(bindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) reindex $(DESTDIR)$(bindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilertest $(DESTDIR)$(bindir)
+-	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerstats $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 pilerget $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 pileraget $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 pilerimport $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 pilerexport $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 reindex $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 pilertest $(DESTDIR)$(bindir)
++	$(INSTALL) -m 6755 pilerstats $(DESTDIR)$(bindir)
+ 
+ clean:
+ 	rm -f *.o *.a libpiler.so* piler pilerconf pilerget pileraget pilerimport pilerexport pilertest pilerstats reindex piler-smtp
+--- a/util/Makefile.in	2026-06-30 02:03:50.526529284 +0200
++++ b/util/Makefile.in	2026-06-30 02:09:45.873896344 +0200
+@@ -50,7 +50,7 @@
+ 
+ 	$(INSTALL) -m 0755 $(srcdir)/db-mysql.sql $(DESTDIR)$(datarootdir)/piler
+ 	$(INSTALL) -m 0755 $(srcdir)/db-mysql-root.sql.in $(DESTDIR)$(datarootdir)/piler
+-	$(INSTALL) -m 0644 -o $(RUNNING_USER) -g $(RUNNING_GROUP) $(srcdir)/deduphelper $(DESTDIR)$(datarootdir)/piler
++	$(INSTALL) -m 0644 $(srcdir)/deduphelper $(DESTDIR)$(datarootdir)/piler
+ 
+ clean:
+ 	rm -f postinstall.sh

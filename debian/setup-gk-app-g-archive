@@ -1,0 +1,97 @@
+#!/bin/bash
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 grommunio GmbH
+#
+# grommunio-auth adaptor for grommunio-archive: writes the OpenID Connect
+# client handed over by grommunio-auth into config-site.php, or removes it
+# again when called as delete-gk-app-g-archive.
+
+set -e
+
+PROGNAME="`basename $0`"
+ADAPTOR_CONFIG_DIR='/var/cache/grommunio-auth/adaptor-config'
+GARCHIVE_ADAPTOR_CONFIG='keycloak-grommunio-archive.json'
+GARCHIVE_ADAPTOR_PUBKEY='keycloak-grommunio-archive.bearer_pubkey'
+GARCHIVE_ADAPTOR_CFG="${ADAPTOR_CONFIG_DIR}/${GARCHIVE_ADAPTOR_CONFIG}"
+GARCHIVE_SITE_CONFIG='/etc/grommunio-archive/config-site.php'
+BLOCK_BEGIN='// grommunio-auth begin'
+BLOCK_END='// grommunio-auth end'
+
+
+check_if_root () {
+	local MY_EUID=$(id -u)
+	if [ -n "$MY_EUID" -a $MY_EUID -ne 0 ]; then
+		echo "${PROGNAME}: this program must be run as root" 1>&2
+		exit 2
+	fi
+}
+
+# the php-fpm unit name differs per distro (php-fpm, php8.2-fpm, ...)
+restart_phpfpm () {
+	local PHPFPM_UNIT=$(systemctl list-units --plain --no-legend --type=service 'php*fpm*' | awk 'NR==1 {print $1}')
+	PHPFPM_UNIT="${PHPFPM_UNIT:-php-fpm.service}"
+	echo -n "Restarting g-archive FPM - '$PHPFPM_UNIT'..."
+	systemctl try-restart "$PHPFPM_UNIT"
+	echo " done."
+}
+
+remove_block () {
+	sed -i "\#^${BLOCK_BEGIN}\$#,\#^${BLOCK_END}\$#d" "$GARCHIVE_SITE_CONFIG"
+}
+
+cleanup () {
+	local F
+	for F in "${ADAPTOR_CONFIG_DIR}/${GARCHIVE_ADAPTOR_CONFIG}" "${ADAPTOR_CONFIG_DIR}/${GARCHIVE_ADAPTOR_PUBKEY}"; do
+		[ -e "$F" ] || continue
+		shred "$F" 2>/dev/null || true
+		rm -vf "$F" || true
+	done
+}
+
+case "$PROGNAME" in
+	setup-gk-app-g-archive)
+		check_if_root
+		if [ ! -s "$GARCHIVE_SITE_CONFIG" ]; then
+			echo "${PROGNAME}: ${GARCHIVE_SITE_CONFIG} not found, grommunio-archive is not set up" 1>&2
+			exit 1
+		fi
+		KC_ID=$(jq -r .resource "$GARCHIVE_ADAPTOR_CFG")
+		KC_SECRET=$(jq -r '.credentials.secret // empty' "$GARCHIVE_ADAPTOR_CFG")
+		KC_URL=$(jq -r '."auth-server-url"' "$GARCHIVE_ADAPTOR_CFG")
+		KC_REALM=$(jq -r .realm "$GARCHIVE_ADAPTOR_CFG")
+		ISSUER="${KC_URL%/}/realms/${KC_REALM}"
+		# the values land in single quoted PHP strings
+		KC_SECRET=$(printf '%s' "$KC_SECRET" | sed "s/[\\\\']/\\\\&/g")
+
+		remove_block
+		# a closing php tag would turn the appended block into output:
+		# drop trailing blank lines, then a trailing ?>, and make sure
+		# the block starts on a line of its own
+		sed -i -e :a -e '/^[[:space:]]*$/{$d;N;ba' -e '}' "$GARCHIVE_SITE_CONFIG"
+		sed -i '$s/[[:space:]]*?>[[:space:]]*$//' "$GARCHIVE_SITE_CONFIG"
+		[ -z "$(tail -c1 "$GARCHIVE_SITE_CONFIG")" ] || echo >> "$GARCHIVE_SITE_CONFIG"
+		cat >> "$GARCHIVE_SITE_CONFIG" <<-EOF
+			${BLOCK_BEGIN}
+			\$config['ENABLE_OIDC_LOGIN'] = 1;
+			\$config['OIDC_ISSUER'] = '${ISSUER}';
+			\$config['OIDC_CLIENT_ID'] = '${KC_ID}';
+			\$config['OIDC_CLIENT_SECRET'] = '${KC_SECRET}';
+			\$config['OIDC_AUTO_LOGIN'] = 1;
+			${BLOCK_END}
+		EOF
+		chown root:groarchive "$GARCHIVE_SITE_CONFIG"
+		chmod 0640 "$GARCHIVE_SITE_CONFIG"
+		echo "grommunio-archive: OIDC login configured against ${ISSUER}"
+		restart_phpfpm
+		# Clean up stragglers
+		cleanup
+		;;
+	delete-gk-app-g-archive)
+		check_if_root
+		if [ -f "$GARCHIVE_SITE_CONFIG" ]; then
+			remove_block
+			echo "grommunio-archive: OIDC login removed"
+			restart_phpfpm
+		fi
+		;;
+esac
