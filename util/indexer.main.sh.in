@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -o nounset
+set -o errexit
+set -o pipefail
+
+MAINTMPFILE="/var/piler/run/main.indexer.tmp"
+CONFIG_FILE="SYSCONFDIR/piler/sphinx.conf"
+PRIORITY="mail.info"
+TOUCHFILE="/var/piler/stat/indexer"
+MAIN_INDEX="main1"
+
+if [[ -f SYSCONFDIR/piler/MANTICORE ]]; then
+   CONFIG_FILE=SYSCONFDIR/piler/manticore.conf
+fi
+
+export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin"
+
+finish() {
+   rm -f "$MAINTMPFILE"
+}
+
+if [[ -f "$MAINTMPFILE" ]]; then
+   echo "INDEXER ERROR: indexer merging to main index is already running. It started at $(cat "$MAINTMPFILE")" | logger -p "$PRIORITY"
+   exit 1
+fi
+
+date > "$MAINTMPFILE"
+
+touch "$TOUCHFILE"
+
+trap finish EXIT
+
+echo "INDEXER INFO: merging to main started" | logger -p "$PRIORITY"
+
+indexer --config "$CONFIG_FILE" --quiet --merge "$MAIN_INDEX" dailydelta1 --merge-dst-range deleted 0 0 --rotate
+
+echo "INDEXER INFO: merging to main finished" | logger -p "$PRIORITY"
+
+sleep 5
+
+echo "INDEXER INFO: resetting daily delta started" | logger -p "$PRIORITY"
+
+indexer --config "$CONFIG_FILE" --quiet dailydelta1 --rotate
+
+echo "INDEXER INFO: resetting daily delta finished" | logger -p "$PRIORITY"
