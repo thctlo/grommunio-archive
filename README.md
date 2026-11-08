@@ -5,11 +5,30 @@ rebrand and extension of [Piler](https://piler.io/) ([jsuto/piler](https://githu
 for long-term email archiving, integrated with grommunio's own
 authentication, Keycloak/OIDC SSO, and Postfix copy-to-archive setup.
 
-This repository contains **only the Debian packaging** (`debian/`:
-patches, changelog, maintainer scripts, systemd units) — not the
-upstream source. The orig tarball comes from the grommunio community
-source repository at build time; see `debian/changelog` for the exact
-upstream tag/commit each release tracks.
+## Platform
+
+Built and packaged for Debian 13 (trixie); not tested on other
+distributions or Debian releases.
+
+## Repository structure
+
+This repository contains both the upstream Piler source and the
+Debian packaging on top of it:
+
+- **`upstream` branch** — piler's own git history, unmodified, from
+  [jsuto/piler](https://github.com/jsuto/piler), currently at tag
+  `piler-1.4.9`. Piler's own README is kept as `README.upstream.md`
+  (this file would otherwise be overwritten by a merge from that
+  branch).
+- **`main` branch** (this one) — the `upstream` branch merged with
+  `debian/` (patches, changelog, maintainer scripts, systemd units)
+  added on top. This is what gets packaged.
+
+Grommunio itself does not publish Piler as git (only as a patched
+source RPM in their community repository), so this repo clones real
+upstream directly and tracks grommunio's patches as our own
+`debian/patches/` on top of it, instead of only carrying the
+packaging and fetching the source tarball separately at build time.
 
 ## What the patches do
 
@@ -37,11 +56,22 @@ Piler calls it with — the libxls tool's `xls2csv` does not).
 ## Building
 
 ```
-# Fetch the upstream source tarball matching the version in
-# debian/changelog (see that entry for which upstream tag/commit),
-# then:
-dpkg-source -b <extracted-source-dir>
+dpkg-source -b .
 sbuild <resulting>.dsc
+```
+
+(Run from a checkout of the `main` branch — the source tree and
+`debian/` are both already here, no separate tarball fetch needed.)
+
+## Updating to a newer piler release
+
+```
+git fetch piler-upstream tag piler-1.4.X
+git branch -f upstream piler-1.4.X
+git checkout main
+git merge upstream
+# resolve any conflicts in README.upstream.md/.gitignore if upstream changed them,
+# rebase debian/patches/ against the new source, bump debian/changelog
 ```
 
 ## Provenance

@@ -1,0 +1,19 @@
+[Unit]
+Description=Piler Email Archive
+Documentation=https://www.mailpiler.org
+After=network-online.target mysql.service pilersearch.service
+Wants=network-online.target
+Requires=pilersearch.service
+
+[Service]
+ExecStart=/usr/sbin/piler -d
+ExecReload=/bin/kill -HUP $MAINPID
+PIDFile=/var/piler/run/piler.pid
+KillMode=process
+Restart=always
+RestartPreventExitStatus=255
+Type=forking
+User=root
+
+[Install]
+WantedBy=multi-user.target

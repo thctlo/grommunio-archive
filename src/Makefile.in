@@ -1,0 +1,102 @@
+SHELL = @SHELL@
+
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+bindir = @bindir@
+sbindir = @sbindir@
+includedir = @includedir@
+libdir = @libdir@
+libexecdir = @libexecdir@
+srcdir = @srcdir@
+sysconfdir = @sysconfdir@
+mandir = @mandir@
+datarootdir = @datarootdir@
+localstatedir = @localstatedir@
+
+CC = @CC@
+CFLAGS = @CFLAGS@ @CPPFLAGS@
+DEFS = @defs@
+INCDIR = -I. -I.. @INCDIR@ @sql_includes@
+LIBDIR = -L. @LIBDIR@ @LDFLAGS@
+LIBS = @LIBS@ @sql_libs@
+OBJS = @OBJS@
+SQL_OBJS = @sql_obj@
+RUNNING_USER = @RUNNING_USER@
+RUNNING_GROUP = `@id_bin@ -gn $(RUNNING_USER)`
+
+PILER_VERSION=0
+PILER_REVISION=1
+PILER_RELEASE=1
+LIBPILER_VERSION=$(PILER_VERSION).$(PILER_REVISION).$(PILER_RELEASE)
+
+MAKE = `which make`
+
+INSTALL = @INSTALL@
+
+all: libpiler.a piler pilerconf pilerget pileraget pilerimport pilerexport reindex test stats piler-smtp
+install: install-piler
+
+
+piler: piler.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR) @LDFLAGS@
+
+libpiler.a: $(OBJS) $(SQL_OBJS)
+	ar cr libpiler.a $(OBJS) $(SQL_OBJS)
+	ranlib libpiler.a
+	$(CC) -shared -Wl,-soname,libpiler.so.$(LIBPILER_VERSION) -o libpiler.so.$(LIBPILER_VERSION) $(OBJS) $(SQL_OBJS)
+	ln -sf libpiler.so.$(LIBPILER_VERSION) libpiler.so
+	ln -sf libpiler.so.$(LIBPILER_VERSION) libpiler.so.$(PILER_VERSION)
+
+piler-smtp: piler-smtp.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< cfg.o misc.o tai.o smtp.o session.o dirs.o sig.o bdat.o screen.o $(LIBS) $(LIBDIR)
+
+pilerget: pilerget.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR)
+
+pileraget: pileraget.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR)
+
+pilerimport: pilerimport.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR)
+
+pilerexport: pilerexport.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR)
+
+pilerconf: pilerconf.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR)
+
+reindex: reindex.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o $@ $< -lpiler $(LIBS) $(LIBDIR)
+
+test: test.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o pilertest $< -lpiler $(LIBS) $(LIBDIR) @LDFLAGS@
+
+stats: stats.c libpiler.a
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -o pilerstats $< -lpiler $(LIBS) $(LIBDIR) @LDFLAGS@
+
+%.o: $(srcdir)/%.c
+	$(CC) $(CFLAGS) $(INCDIR) $(DEFS) -c $< -o $@
+
+
+install-piler:
+	$(INSTALL) -m 0644 libpiler.a $(DESTDIR)$(libdir)
+	$(INSTALL) -m 0755 libpiler.so.$(LIBPILER_VERSION) $(DESTDIR)$(libdir)
+	(cd $(DESTDIR)$(libdir) && ln -sf libpiler.so.$(LIBPILER_VERSION) libpiler.so)
+	(cd $(DESTDIR)$(libdir) && ln -sf libpiler.so.$(LIBPILER_VERSION) libpiler.so.$(PILER_VERSION))
+
+	$(INSTALL) -m 0755 piler $(DESTDIR)$(sbindir)
+	$(INSTALL) -m 0755 piler-smtp $(DESTDIR)$(sbindir)
+	$(INSTALL) -m 0755 pilerconf $(DESTDIR)$(sbindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerget $(DESTDIR)$(bindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pileraget $(DESTDIR)$(bindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerimport $(DESTDIR)$(bindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerexport $(DESTDIR)$(bindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) reindex $(DESTDIR)$(bindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilertest $(DESTDIR)$(bindir)
+	$(INSTALL) -m 6755 -o $(RUNNING_USER) -g $(RUNNING_GROUP) pilerstats $(DESTDIR)$(bindir)
+
+clean:
+	rm -f *.o *.a libpiler.so* piler pilerconf pilerget pileraget pilerimport pilerexport pilertest pilerstats reindex piler-smtp
+
+distclean: clean
+	rm -f Makefile

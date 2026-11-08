@@ -1,0 +1,501 @@
+#!/bin/bash
+
+set -o nounset
+set -o errexit
+set -o pipefail
+
+INDEXER="$(command -v indexer)"
+SEARCHD="$(command -v searchd)"
+CRON_ORIG="/tmp/crontab.piler.orig"
+CRON_TMP="/tmp/crontab.piler"
+PILERCONF_TMP="/tmp/config.piler.88"
+SOCKET_HELPER_SCRIPT="aaa.pl"
+
+load_default_values() {
+   PILERUSER="piler"
+   SYSCONFDIR=__SYSCONFDIR
+   LOCALSTATEDIR=__LOCALSTATEDIR
+   LIBEXECDIR=__LIBEXECDIR
+   DATAROOTDIR=__DATAROOTDIR
+
+   PILER_CONFIG_DIR="${SYSCONFDIR}/piler"
+   CONFIG_SITE_PHP="${PILER_CONFIG_DIR}/config-site.php"
+
+   KEYFILE="${PILER_CONFIG_DIR}/piler.key"
+
+   HOSTNAME="$(hostname --fqdn)"
+
+   MYSQL_HOSTNAME="localhost"
+   MYSQL_DATABASE="piler"
+   MYSQL_USERNAME="piler"
+   MYSQL_PASSWORD=""
+   MYSQL_ROOT_PASSWORD=""
+   MYSQL_SOCKET=""
+
+   RT=1
+
+   SEARCHCFG="${PILER_CONFIG_DIR}/manticore.conf"
+
+   WWWGROUP="www-data"
+   DOCROOT="/var/piler/www"
+
+   SMARTHOST=""
+   SMARTHOST_PORT=25
+
+   SSL_CERT_DATA="/C=HU/ST=Pest/L=Budapest/O=Example/CN=archive.example.com"
+}
+
+
+make_certificate() {
+   local piler_pem="${PILER_CONFIG_DIR}/piler.pem"
+
+   if [[ ! -f "$piler_pem" ]]; then
+      echo -n "Making an ssl certificate ... "
+      openssl req -new -newkey rsa:4096 -days 3650 -nodes -x509 -subj "$SSL_CERT_DATA" -keyout "$piler_pem" -out 1.cert -sha1
+      cat 1.cert >> "$piler_pem"
+      chmod 640 "$piler_pem"
+      chgrp "$PILERUSER" "$piler_pem"
+      rm -f 1.cert
+   fi
+}
+
+
+display_install_intro() {
+  echo ""
+  echo ""
+  echo "This is the postinstall utility for piler"
+  echo "It should be run only at the first install. DO NOT run on an existing piler installation!"
+  echo ""
+
+  askYN "Continue? [Y/N]" "N"
+  if [[ "$response" != "yes" ]]; then
+     echo "Aborted."
+     exit 1
+  fi
+
+  echo ""
+}
+
+
+check_user() {
+   user="$1"
+
+   if [[ $(whoami) != "$user" ]]; then echo "ERROR: postinstaller must be run as ${user} user"; exit 1; fi
+}
+
+
+isFQDN() {
+  # we need min. 2 dots
+  if [[ "$1" == "xdogfood" ]]; then
+    echo 1
+    return
+  fi
+
+  if [[ "$1" == "x" ]]; then
+    echo 0
+    return
+  fi
+
+  NF="$(echo "$1" | awk -F. '{print NF}')"
+  if [[ $NF -ge 2 ]]; then
+    echo 1
+  else
+    echo 0
+  fi
+}
+
+
+ask() {
+  PROMPT=$1
+  DEFAULT=$2
+
+  echo ""
+  echo -n "$PROMPT [$DEFAULT] "
+  read -r response
+
+  if [[ -z "$response" ]]; then
+    response=$DEFAULT
+  fi
+}
+
+
+askNoEcho() {
+  PROMPT=$1
+  DEFAULT=$2
+
+  stty -echo
+  ask "$PROMPT" "$DEFAULT"
+  stty echo
+  echo ""
+}
+
+askNonBlankNoEcho() {
+  PROMPT=$1
+  DEFAULT=$2
+
+  while true; do
+    stty -echo
+    ask "$PROMPT" "$DEFAULT"
+    stty echo
+    echo ""
+    if [[ -n "$response" ]]; then
+      break
+    fi
+    echo "A non-blank answer is required"
+  done
+}
+
+
+askNonBlank() {
+  PROMPT="$1"
+  DEFAULT="$2"
+
+  while true; do
+    ask "$PROMPT" "$DEFAULT"
+    if [[ -n "$response" ]]; then
+      break
+    fi
+    echo "A non-blank answer is required"
+  done
+}
+
+
+askYN() {
+  PROMPT=$1
+  DEFAULT=$2
+
+  case "$DEFAULT" in
+  yes|Yes|y|Y)
+    DEFAULT="Y"
+    ;;
+  *)
+    DEFAULT="N"
+    ;;
+  esac
+
+  while true; do
+    ask "$PROMPT" "$DEFAULT"
+    response=$(perl -e "print lc(\"$response\");")
+    if [[ -z "$response" ]]; then
+      :
+    else
+      if [[ "$response" == "yes" || "$response" == "y" ]]; then
+        response="yes"
+        break
+      else
+        if [[ "$response" == "no" || "$response" == "n" ]]; then
+          response="no"
+          break
+        fi
+      fi
+    fi
+    echo "A Yes/No answer is required"
+  done
+}
+
+
+preinstall_check() {
+   check_user root
+
+   if [[ "$INDEXER" == "" ]]; then "ERROR: cannot find indexer binary"; echo ""; exit ; fi
+
+   if [[ "$SEARCHD" == "" ]]; then "ERROR: cannot find searchd binary"; echo ""; exit 0; fi
+}
+
+
+gather_webserver_data() {
+   askNonBlank "Please enter the webserver groupname" "$WWWGROUP"
+   WWWGROUP="$response"
+}
+
+
+gather_mysql_account() {
+
+   if [[ -e /var/lib/mysql/mysql.sock ]]; then MYSQL_SOCKET="/var/lib/mysql/mysql.sock"; fi
+   if [[ -e /var/run/mysqld/mysqld.sock ]]; then MYSQL_SOCKET="/var/run/mysqld/mysqld.sock"; fi
+
+   askNonBlank "Please enter mysql hostname" "$MYSQL_HOSTNAME"
+   MYSQL_HOSTNAME="$response"
+
+   if [[ $MYSQL_HOSTNAME == "localhost" ]]; then
+      askNonBlank "Please enter mysql socket path" "$MYSQL_SOCKET"
+      MYSQL_SOCKET="$response"
+   else
+      MYSQL_SOCKET=""
+   fi
+
+   askNonBlank "Please enter mysql database" "${MYSQL_DATABASE}"
+   MYSQL_DATABASE="$response"
+
+   askNonBlank "Please enter mysql user name" "${MYSQL_USERNAME}"
+   MYSQL_USERNAME="$response"
+
+   askNoEcho "Please enter mysql password for ${MYSQL_USERNAME}" ""
+   MYSQL_PASSWORD="$response"
+
+   askNonBlankNoEcho "Please enter mysql root password. If its a recent version of mysql and uses socket authentication, then any string would do here" ""
+   MYSQL_ROOT_PASSWORD="$response"
+
+   askYN "Real time index for manticore? [Y/N]" "Y"
+   if [[ "$response" != "yes" ]]; then
+      RT=0
+   fi
+
+   s=$(echo "use information_schema; select TABLE_NAME from TABLES where TABLE_SCHEMA='${MYSQL_DATABASE}'" | mysql -h "$MYSQL_HOSTNAME" -u root --password="$MYSQL_ROOT_PASSWORD")
+   # shellcheck disable=SC2181
+   if [[ $? -eq 0 ]]; then
+      echo "mysql connection successful"; echo;
+   else
+      echo "ERROR: failed to connect to mysql";
+      gather_mysql_account
+   fi
+
+}
+
+
+gather_smtp_relay_data() {
+   ask "Please enter smtp relay" "$SMARTHOST"
+   SMARTHOST="$response"
+
+   ask "Please enter smtp relay port" "$SMARTHOST_PORT"
+   SMARTHOST_PORT="$response"
+}
+
+
+make_cron_entries() {
+
+   crontab -u "$PILERUSER" -l || true > "$CRON_ORIG"
+
+   if grep PILERSTART "$CRON_ORIG" > /dev/null 2>&1 != 0; then
+      cat /dev/null > "$CRON_ORIG"
+   fi
+
+   if grep PILEREND "$CRON_ORIG" > /dev/null 2>&1 != 0; then
+      cat /dev/null > "$CRON_ORIG"
+   fi
+
+
+   rm -f "$CRON_TMP"
+
+   {
+      echo "";
+      echo "### PILERSTART";
+      [[ $RT -eq 1 ]] || echo "5,35 * * * * ${LIBEXECDIR}/piler/indexer.delta.sh";
+      [[ $RT -eq 1 ]] || echo "30   2 * * * ${LIBEXECDIR}/piler/indexer.main.sh";
+      echo "40 3 * * * ${LIBEXECDIR}/piler/purge.sh";
+      [[ $RT -eq 1 ]] || echo "*/15 * * * * ${INDEXER} --quiet tag1 --rotate --config ${PILER_CONFIG_DIR}/manticore.conf";
+      [[ $RT -eq 1 ]] || echo "*/15 * * * * ${INDEXER} --quiet note1 --rotate --config ${PILER_CONFIG_DIR}/manticore.conf";
+      echo "30   6 * * * /usr/bin/php ${LIBEXECDIR}/piler/generate_stats.php --webui ${DOCROOT} >/dev/null";
+      echo "*/5 * * * * /usr/bin/find ${LOCALSTATEDIR}/piler/error -type f|wc -l > ${LOCALSTATEDIR}/piler/stat/error";
+      echo "*/5 * * * * /usr/bin/find ${DOCROOT}/tmp -type f -name i.\* -exec rm -f {} \;";
+      echo "*/10 * * * * ${LIBEXECDIR}/piler/import.sh";
+      echo "### PILEREND";
+   } >> "$CRON_TMP"
+}
+
+
+make_new_key() {
+   if [[ ! -f "$KEYFILE" ]]; then
+      dd if=/dev/urandom bs=56 count=1 of="$KEYFILE" 2>/dev/null
+      if [ "$(stat -c '%s' "$KEYFILE")" -ne 64 ]; then echo "could not read 64 bytes from /dev/urandom to ${KEYFILE}"; exit 1; fi
+      chgrp "$PILERUSER" "$KEYFILE"
+      chmod 640 "$KEYFILE"
+   fi
+}
+
+
+show_summary() {
+   echo
+   echo
+   echo "INSTALLATION SUMMARY:"
+   echo
+
+   echo "piler user: ${PILERUSER}"
+   echo "keyfile: ${KEYFILE}"
+   echo
+
+   echo "mysql host: ${MYSQL_HOSTNAME}"
+   echo "mysql socket: ${MYSQL_SOCKET}"
+   echo "mysql database: ${MYSQL_DATABASE}"
+   echo "mysql username: ${MYSQL_USERNAME}"
+   echo "mysql password: *******"
+   echo
+
+   echo "indexer: ${INDEXER}"
+   echo "config file: ${SEARCHCFG}"
+   echo "real time index: ${RT}"
+   echo
+
+   echo "vhost docroot: ${DOCROOT}"
+   echo "www group: ${WWWGROUP}"
+   echo
+
+   echo "smtp relay host: ${SMARTHOST}"
+   echo "smtp relay port: ${SMARTHOST_PORT}"
+   echo
+
+   echo "piler crontab:"
+   cat "$CRON_TMP"
+   echo; echo;
+
+   export HOSTNAME SITE_NAME DOCROOT SMTP_DOMAIN MYSQL_HOSTNAME MYSQL_USERNAME MYSQL_PASSWORD MYSQL_DATABASE SMARTHOST SMARTHOST_PORT RT
+
+   askYN "Correct? [Y/N]" "N"
+   if [[ $response != "yes" ]]; then
+      echo "Aborted."
+      exit
+   fi
+}
+
+
+execute_post_install_tasks() {
+   local create_db=1
+
+   askYN "Continue and modify system? [Y/N]" "N"
+   if [[ "$response" != "yes" ]]; then
+      echo "Aborted."
+      exit
+   fi
+
+   s=$(echo "use information_schema; select TABLE_NAME from TABLES where TABLE_SCHEMA='${MYSQL_DATABASE}'" | mysql -h "$MYSQL_HOSTNAME" -u root --password="$MYSQL_ROOT_PASSWORD")
+   # shellcheck disable=SC2181
+   if [[ $? -eq 0 ]]; then
+      echo "mysql connection successful"; echo;
+      if [[ $(echo "$s" | grep -c metadata) -eq 1 ]]; then echo "ERROR: Detected metadata table in ${MYSQL_DATABASE}."; create_db=0; fi
+   else
+      echo "ERROR: failed to connect to mysql";
+      exit 1
+   fi
+
+   if [[ $create_db -eq 1 ]]; then
+      echo
+      echo -n "Creating mysql database... ";
+      sed -e "s%MYSQL_HOSTNAME%${MYSQL_HOSTNAME}%g" -e "s%MYSQL_DATABASE%${MYSQL_DATABASE}%g" -e "s%MYSQL_USERNAME%${MYSQL_USERNAME}%g" -e "s%MYSQL_PASSWORD%${MYSQL_PASSWORD}%g" "${DATAROOTDIR}/piler/db-mysql-root.sql.in" | mysql -h "$MYSQL_HOSTNAME" -u root --password="$MYSQL_ROOT_PASSWORD"
+      mysql -h "$MYSQL_HOSTNAME" -u "$MYSQL_USERNAME" --password="$MYSQL_PASSWORD" "$MYSQL_DATABASE" < "${DATAROOTDIR}/piler/db-mysql.sql"
+      echo "Done."
+   fi
+
+   echo -n "Writing manticore configuration... ";
+   sed -e "s%MYSQL_HOSTNAME%${MYSQL_HOSTNAME}%" -e "s%MYSQL_DATABASE%${MYSQL_DATABASE}%" -e "s%MYSQL_USERNAME%${MYSQL_USERNAME}%" -e "s%MYSQL_PASSWORD%${MYSQL_PASSWORD}%" "${SYSCONFDIR}/piler/manticore.conf.dist" > "$SEARCHCFG"
+   chmod +x "$SEARCHCFG"
+   echo "Done."
+
+   if [[ $RT -eq 0 ]]; then
+      echo -n "Initializing manticore index data... "
+      sed -i "s/define('RT', 1)/define('RT', 0)/" "$SEARCHCFG"
+      su "$PILERUSER" -c "indexer --all --config ${SEARCHCFG}"
+      echo "Done."
+   fi
+
+   echo -n "installing cron entries for ${PILERUSER}... "
+   crontab -u "$PILERUSER" "$CRON_TMP"
+   echo "Done."
+
+
+   echo "Fix piler.conf path in pilerpurge.py"
+   sed -i "s%\/etc\/piler\/piler\.conf%${SYSCONFDIR}\/piler\/piler\.conf%" "${LIBEXECDIR}/piler/pilerpurge.py"
+
+   cat > "$CONFIG_SITE_PHP" << EOF
+<?php
+
+\$config['SITE_NAME'] = '$HOSTNAME';
+\$config['PATH_PREFIX'] = '/';
+\$config['SITE_URL'] = 'http://' . \$config['SITE_NAME'] . \$config['PATH_PREFIX'];
+\$config['DIR_BASE'] = '$DOCROOT/';
+
+\$config['SMTP_DOMAIN'] = '$HOSTNAME';
+\$config['SMTP_FROMADDR'] = 'no-reply@' . \$config['SMTP_DOMAIN'];
+\$config['ADMIN_EMAIL'] = 'admin@' . \$config['SMTP_DOMAIN'];
+
+\$config['DB_DRIVER'] = 'mysql';
+\$config['DB_PREFIX'] = '';
+\$config['DB_HOSTNAME'] = '$MYSQL_HOSTNAME';
+\$config['DB_USERNAME'] = '$MYSQL_USERNAME';
+\$config['DB_PASSWORD'] = '$MYSQL_PASSWORD';
+\$config['DB_DATABASE'] = '$MYSQL_DATABASE';
+
+\$config['SMARTHOST'] = '$SMARTHOST';
+\$config['SMARTHOST_PORT'] = '$SMARTHOST_PORT';
+\$config['RT'] = $RT;
+EOF
+
+   make_certificate
+
+cat <<SOCKHELPER > "$SOCKET_HELPER_SCRIPT"
+\$a=\$ARGV[0];
+\$a=~s/\//\\\\\//g;
+print \$a;
+SOCKHELPER
+
+   MYSQL_SOCKET=$(perl "$SOCKET_HELPER_SCRIPT" "$MYSQL_SOCKET")
+
+   sed -e "s/mysqlpwd=verystrongpassword/mysqlpwd=${MYSQL_PASSWORD}/" -e "s/tls_enable=0/tls_enable=1/" -e "s/mysqlsocket=\/var\/run\/mysqld\/mysqld.sock/mysqlsocket=${MYSQL_SOCKET}/" "${SYSCONFDIR}/piler/piler.conf.dist" > "$PILERCONF_TMP"
+   if [[ $RT -eq 0 ]]; then sed -e "s/rtindex=.*/rtindex=0/" "$PILERCONF_TMP"; fi
+
+   if ! grep queuedir "$PILERCONF_TMP"; then echo queuedir=/var/piler/store >> "$PILERCONF_TMP"; fi
+   cat "$PILERCONF_TMP" > "${SYSCONFDIR}/piler/piler.conf"
+   rm -f "$PILERCONF_TMP"
+
+   # Manticore is the preferred search engine
+   touch "${SYSCONFDIR}/piler/MANTICORE"
+
+   chmod 755 "${LOCALSTATEDIR}/piler/stat"
+
+   if [[ -d webui ]]; then
+      echo -n "Copying www files to ${DOCROOT}... "
+      mkdir -p "$DOCROOT" || exit 1
+      cp -R webui/* "$DOCROOT"
+      cp webui/.htaccess "$DOCROOT"
+   fi
+
+   if [[ -d "$DOCROOT" ]]; then webui_install; fi
+
+   if [[ -f "/usr/bin/systemctl" ]]; then
+      RELOAD_COMMAND="/usr/bin/systemctl reload piler"
+   else
+      RELOAD_COMMAND="/etc/init.d/rc.piler reload"
+   fi
+
+   if [[ -d "/etc/sudoers.d" ]]; then
+      echo -n "Creating sudoers file"
+      echo "www-data ALL=NOPASSWD: ${RELOAD_COMMAND}" >> /etc/sudoers.d/piler
+   fi
+
+}
+
+
+webui_install() {
+   chmod 770 "${DOCROOT}/tmp" "${DOCROOT}/images"
+   chown "${PILERUSER}:${WWWGROUP}" "${DOCROOT}/tmp"
+
+   echo "Done."
+}
+
+
+clean_up_temp_stuff() {
+   rm -f "$CRON_TMP"
+
+   echo; echo "Done post installation tasks."; echo
+}
+
+
+load_default_values
+
+
+preinstall_check
+
+display_install_intro
+
+gather_webserver_data
+gather_mysql_account
+gather_smtp_relay_data
+
+
+make_cron_entries
+make_new_key
+
+show_summary
+
+execute_post_install_tasks
+
+clean_up_temp_stuff

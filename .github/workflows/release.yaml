@@ -1,0 +1,134 @@
+name: Create release
+
+on:
+  push:
+    tags:
+      - piler*
+
+env:
+  PROJECT_ID: piler
+  DISTRO: resolute
+  IMAGE_NAME: sutoj/piler
+
+permissions:
+  contents: write
+
+jobs:
+  get-version:
+    runs-on:
+      - ubuntu-latest
+
+    outputs:
+      IMAGE_TAG: ${{ steps.get-version.outputs.IMAGE_TAG }}
+      COMMIT_ID: ${{ steps.get-version.outputs.COMMIT_ID }}
+      VERSION: ${{ steps.get-version.outputs.VERSION }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            VERSION
+            .github
+          sparse-checkout-cone-mode: false
+
+      - name: Get version
+        id: get-version
+        uses: ./.github/actions/version
+
+  build-package-amd64:
+    needs:
+      - get-version
+
+    runs-on:
+      - ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build package
+        id: build-package
+        uses: ./.github/actions/build/package
+        with:
+          ARCH: amd64
+          COMMIT_ID: ${{ needs.get-version.outputs.COMMIT_ID }}
+          DISTRO: ${{ env.DISTRO }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ env.DISTRO }}-${{ matrix.arch }}
+          PROJECT_ID: 'piler'
+          VERSION: ${{ needs.get-version.outputs.VERSION }}
+
+  build-package-arm64:
+    needs:
+      - get-version
+
+    runs-on:
+      - self-hosted
+      - ARM64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build package
+        id: build-package
+        uses: ./.github/actions/build/package
+        with:
+          ARCH: arm64
+          COMMIT_ID: ${{ needs.get-version.outputs.COMMIT_ID }}
+          DISTRO: ${{ env.DISTRO }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ env.DISTRO }}-${{ matrix.arch }}
+          PROJECT_ID: 'piler'
+          VERSION: ${{ needs.get-version.outputs.VERSION }}
+
+  build-image:
+    needs:
+      - get-version
+      - build-package-amd64
+      - build-package-arm64
+
+    runs-on:
+      - ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          path: docker
+          merge-multiple: true
+
+      - name: Build image
+        uses: ./.github/actions/build/image
+        with:
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ needs.get-version.outputs.VERSION }}
+          LOAD: false
+          PACKAGE: ${{ env.PROJECT_ID }}_${{ needs.get-version.outputs.VERSION }}-${{ env.DISTRO }}-${{ needs.get-version.outputs.COMMIT_ID }}
+          PLATFORMS: 'linux/amd64,linux/arm64'
+          PUSH: true
+
+  create-release:
+    needs:
+      - build-image
+
+    runs-on:
+      - ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download packages
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+        run: |
+          gh release create "$tag" \
+              --repo="$GITHUB_REPOSITORY" \
+              --title="${GITHUB_REPOSITORY#*/} ${tag#*-}" \
+              --generate-notes
+          gh release upload "$tag" piler*deb

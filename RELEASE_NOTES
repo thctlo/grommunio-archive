@@ -1,0 +1,298 @@
+1.4.8:
+-----
+
+- Removed ubuntu user from docker image
+
+1.4.7:
+-----
+
+- Moved manticore to a dedicated docker image
+
+  When using piler in docker, be sure to update /etc/piler/piler.conf, and set
+
+  sphxhost=manticore
+
+  Also fix /etc/piler/config-site.php:
+
+  $config['SPHINX_HOSTNAME'] = 'manticore:9306';
+  $config['SPHINX_HOSTNAME_READONLY'] = 'manticore:9307'
+
+- Display svg images in preview pane (#97)
+
+- Removed non-functioning clamd support
+  I suggest to run an anti-virus software on your MX
+
+- Path prefix changes
+
+  If you want to override the default PATH_PREFIX (/) in
+  config-site.php, then fix the following settings as well in config-site.php:
+
+  * BRANDING_FAVICON
+  * BRANDING_LOGO
+  * SITE_LOGO_LG
+
+
+
+
+1.4.6:
+-----
+
+- Updated the GUI to use latest bootstrap (5.3.3) and jquery (3.7.1)
+
+- Write audit records to manticore
+
+  Note that it requires real-time (rt) index. When using plain index,
+  then no audit record is written
+
+  When using piler in docker, be sure to update /etc/piler/manticore.conf
+  to include the index audit1 {} block
+
+- Added support for path prefix, ie. when the archive can be accessed
+  at https://example.com/archive/ (instead of using a dedicated hostname,
+  eg. https://archive.example.com).
+
+  To do that:
+    * fix the PATH_PREFIX and SITE_URL in config-site.php, eg.
+      $config['PATH_PREFIX'] = '/archive/';
+      $config['SITE_URL'] = 'https://' . $config[SITE_NAME_CONST] . '/archive/';
+
+    * fix the base_url in assets/js/piler.js, eg.
+      base_url: location.origin + '/archive/',
+
+    * fix <sysconfdir>/piler/piler-nginx.conf (eg. /etc/piler/piler-nginx.conf)
+      ** fix the location, eg.
+
+         location /archive {
+            alias /var/piler/www;
+            index  index.php index.html;
+            try_files $uri $uri/ /index.php;
+
+            ....
+         }
+
+      ** fix the rewrite rules, eg.
+
+      rewrite /search.php /index.php?route=search/search&type=simple;
+
+      becomes
+
+      rewrite /archive/search.php /archive/index.php?route=search/search&type=simple;
+
+- import.sh and accounting are enabled in piler's crontab by default
+
+- Created a tool to mass download emails from Microsoft365 (formerly office365)
+  You may find it in the contrib/o365 dir
+
+- Obsoleted ENABLE_ON_THE_FLY_VERIFICATION variable
+  The GUI behaves like if ENABLE_ON_THE_FLY_VERIFICATION=0
+
+
+1.4.5:
+------
+
+- Introduced 2 new variables in /etc/piler/piler.conf affecting piler-smtp
+
+  ; max message size in bytes
+  ; piler-smtp will reject any message that's bigger than this number
+  max_message_size=50000000
+
+  ; max memory in bytes piler-smtp uses for buffering messages
+  ; when this limit is exceeded, no new emails will be accepted
+  ; until the used memory for all in progress emails decreases
+  ; below this level
+  max_smtp_memory=500000000
+
+  Be sure to adjust these values to your environment!
+
+- Added read-only connection support for manticore
+  If using sphinx, add the following to config-site.php:
+  $config['SPHINX_HOSTNAME_READONLY'] = '127.0.0.1:9306';
+
+- pilerimport supports Zimbra IMAP impersonation
+
+  Generate the following base64 encoded string:
+  (Be sure to use the actual usernames and password):
+
+  pw="$( printf '%s\0%s\0%s' 'username' 'zimbra_admin_username' 'zimbra_admin_password' | base64 )"
+
+  Then specify -u ZIMBRA -p "$pw" for pilerimport, eg.
+
+  pilerimport -i imap.server -u ZIMBRA -p "$pw" ...
+
+  Note that "ZIMBRA" is a special username, it indicates for pilerimport
+  to actually use the imap impersonation for Zimbra.
+
+
+1.4.4:
+------
+
+- Renamed "group" table to "usergroup"
+  Be sure to run util/db-upgrade.sql on the mysql piler database
+
+
+1.4.3:
+------
+
+- Improved real-time index support (no need to use rtindex.py any more)
+  See https://www.mailpiler.org/wiki/current:manticore for more
+
+
+1.4.2:
+------
+
+- Fixed docker image
+- Fixed php socket path in piler-nginx.conf
+- Fixed manticore index data settings
+
+
+1.4.1:
+------
+
+- Replaced sphinx with manticore 5.0.2, see https://www.mailpiler.org/wiki/current:manticore
+- Replaced obsoleted libchart library with chart.js
+- Added real-time index support
+- Added oauth2 support to imapfetch.py
+- Added support for pilerexport to spread files among several directories. See the -D option
+
+
+1.3.12:
+-------
+
+- Introduced new piler.conf variable: tls_min_version
+
+  It sets the minimum TLS protocol version the piler-smtp daemon supports.
+
+  Possible values:
+  - TLSv1   (not recommended)
+  - TLSv1.1 (not recommended)
+  - TLSv1.2 (default)
+  - TLSv1.3
+
+- Introduced the archive_address feature, see etc/example.conf for the details
+- Introduced the raw: search label
+- Added Italian translation. Credits: Stefano Gatto
+- timestamp signing sorts by 'id' column
+- timestamp hash value defaults to sha256
+- Minor fixes
+- Added support for php 8.1
+- Fixed handling long email addresses
+
+Be sure to apply util/db-upgrade.sql
+
+
+1.3.11:
+-------
+
+- [BUGFIX] Refactored the smtp timeout check
+- Obsoleted the LDAP port parameter. Specify the ldap host in the form
+  of protocol://hostname:port, eg. ldaps://ldap.example.com:636
+
+1.3.10:
+-------
+
+- Added security header feature
+- Introduced the smtp acl list, and obsoleted the tcp_wrappers check
+- Switched from Blowfish encryption to AES-256
+
+1.3.9:
+------
+
+- Added a separator to searching for attachment names
+- [BUGFIX] Render multiple mail parts in mail view instead of only the last part
+- Use TLS v1.2 with openssl 1.0.x for connecting remote pop3/imap servers
+- Instant search results to the gui when the search page loads
+- Support sphinx-3.3.1, introduced sphinx strict mode variable
+- GUI domain fixes
+- gcc 9 fixes
+- Fix permission on sphinx data dir to 700
+- pilerpurge.py should honor the mysqlhost value
+- Password change enabled by default
+- Health page fixes
+- GUI mime parser fixes
+- Start/stop script fix
+- Optimized search page for mobile devices, set $config['ENABLE_MOBILE_PREVIEW'] = 1; in config-site.php to enable it
+
+
+1.3.0:
+-----
+
+- Switched from utf8 to utf8mb4 encoding.
+
+- Switched from preforking model to epoll
+
+- Removed PDF support
+
+- GUI fixes
+
+- Added HTML purifier support
+
+- Rewritten pilerpurge in Python
+
+1.2.0:
+------
+
+Heavy SQL scheme changes throughout the development of 1.2.0!
+
+2016.10.06.
+
+Removed deb and rpm packaging metadata.
+
+2016.09.21.
+
+Improved logging for the GUI. See the new config option: $config['LOG_LEVEL'] = NORMAL;
+
+2016.09.18.
+
+Moved all piler configuration from ${sysconfdir} to ${sysconfdir}/piler, eg.
+
+root@01b74b787c26:/# ls -la /usr/local/etc/piler/
+total 36
+drwxr-xr-x 1 root root    24 Oct  6 20:49 .
+drwxr-xr-x 1 root root    74 Oct  6 20:49 ..
+-rw-r--r-- 4 root root  1008 Oct  6 20:39 piler.conf
+-rw-r----- 5 root piler 1066 Oct  6 20:39 piler.conf.dist
+-rw-r----- 5 root piler   56 Oct  6 20:40 piler.key
+-rw------- 5 root root  5256 Oct  6 20:40 piler.pem
+-rw-r--r-- 1 root root  6270 Oct  6 20:49 sphinx.conf
+-rw-r--r-- 5 root piler 6299 Oct  6 20:39 sphinx.conf.dist
+
+Make sure to update the piler shipped shell scripts
+(rc.searchd, indexer.*.sh, ...) as well!
+
+2016.08.31.
+
+Added chunking / BDAT support for the piler daemon.
+You may turn it on by setting enable_chunking=1 in piler.conf
+
+2016.06.19.
+
+Improved attachment table indexing.
+
+2016.05.07.
+
+Obsoleted the --enable-starttls configure option.
+
+2016.03.02.
+
+Discard messages shorther than 100 bytes.
+
+2016.02.10.
+
+Added the private feature (for auditors only).
+
+
+2015.11.26.
+
+Removed the pilergetd stuff.
+
+2015.07.08.
+
+Delete option for auditors.
+
+2015.05.07.
+
+Added milter script to contrib directory.
+
+2015.04.22.
+
+Added timestamp support.
