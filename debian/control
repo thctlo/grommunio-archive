@@ -1,0 +1,59 @@
+Source: grommunio-archive
+Section: mail
+Priority: optional
+Maintainer: Louis van Belle <louis@van-belle.nl>
+Build-Depends: debhelper-compat (= 13),
+ catdoc,
+ libcurl4-openssl-dev,
+ libmariadb-dev,
+ libssl-dev,
+ libtre-dev,
+ libzip-dev,
+ php-cli,
+ poppler-utils,
+ tnef,
+ unrtf,
+ zlib1g-dev
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://www.mailpiler.org/
+
+Package: grommunio-archive
+Architecture: any
+Depends: ${misc:Depends},
+ ${shlibs:Depends},
+ catdoc,
+ grommunio-common,
+ mariadb-client,
+ php-cli,
+ php-curl,
+ php-fpm,
+ php-gd,
+ php-ldap,
+ php-mysql,
+ php-xml,
+ php-zip,
+ poppler-utils,
+ python3,
+ sphinxsearch,
+ system-user-groarchive,
+ system-user-grommunio,
+ tnef,
+ unrtf
+Recommends: cron | cron-daemon,
+ postfix,
+ postfix-lmdb,
+ postfix-pcre
+Suggests: mariadb-server | default-mysql-server
+Description: grommunio Archive: email archiving solution (based on Piler)
+ grommunio Archive is an open source email archiving system based on Piler
+ (mailpiler.org). Mail is copied to it by the MTA over SMTP, stored
+ compressed and deduplicated, and indexed for full text search with Sphinx.
+ .
+ Features include archiving and retention rules, legal hold, deduplication,
+ digital fingerprinting and verification, tagging, viewing, exporting and
+ restoring messages, bulk import/export, audit logs and IMAP import (Google
+ Apps, Office 365 and others). The web interface is written in PHP.
+ .
+ Run grommunio-archive-setup after the installation to create the database,
+ the configuration and the search index and to enable the services.

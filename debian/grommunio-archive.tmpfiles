@@ -1,0 +1,12 @@
+# Type Path                                        Mode User       Group      Age Argument
+d /var/lib/grommunio-archive                        0750 groarchive groarchive -
+d /var/lib/grommunio-archive/error                  0750 groarchive groarchive -
+d /var/lib/grommunio-archive/imap                   0750 groarchive groarchive -
+d /var/lib/grommunio-archive/sphinx                 0775 groarchive groarchive -
+d /var/lib/grommunio-archive/stat                   0750 groarchive groarchive -
+d /var/lib/grommunio-archive/store                  0750 groarchive groarchive -
+d /var/lib/grommunio-archive/store/00               0750 groarchive groarchive -
+d /var/lib/grommunio-archive/tmp                    0750 groarchive groarchive -
+d /var/log/grommunio-archive                        0750 groarchive groarchive -
+d /run/grommunio-archive                            0775 groarchive groarchive -
+d /etc/grommunio-archive                            0750 root       groarchive -

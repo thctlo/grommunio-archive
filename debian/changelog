@@ -1,0 +1,84 @@
+grommunio-archive (1.4.9-5) trixie; urgency=medium
+
+  * Rebuild from the current openSUSE community source (lp160.5.14, up from
+    our previous lp160.3.40 baseline). Upstream tarball and all previously
+    existing patches are byte-identical to our last build - this only adds
+    what the community added since then:
+    - grommunio-login.patch: new login/2FA/four-eyes/logout page design.
+    - grommunio-oidc.patch + the grommunio-auth adaptor script
+      (setup-gk-app-g-archive/delete-gk-app-g-archive, shipped into the
+      shared /usr/share/grommunio-auth/adaptor-config-scripts/ directory):
+      native OpenID Connect login support (authorization code flow),
+      wired the same way grommunio-files/-web/-admin-api already are.
+    - audit-mysql-without-rt.patch: real bugfix for our own configuration.
+      piler 1.4.6 moved the audit trail to the Manticore real-time index
+      and returns early when RT=0; this installation uses the plain
+      Sphinx index (RT=0), so the audit viewer, CSV export and the
+      per-hour download/restore limits were silently reading an index
+      that does not exist. With RT=0, read/write the MySQL audit table
+      as piler 1.3.x did instead; RT=1 is unaffected.
+    - db-upgrade-grommunio.sql, run idempotently from postinst (ported
+      from upstream's own %post, converted to POSIX sh and our own file
+      layout): upgrades an existing piler 1.3.x-shaped database (renamed
+      `group` table, widened audit.ipaddr, two new metadata indexes). A
+      no-op on our own installs, since grommunio-archive-setup always
+      creates the current 1.4.9 schema directly - only matters for an
+      archive that predates this packaging.
+    No Build-Depends/Depends changes: the new OIDC code is self-contained
+    PHP, no new library needed (confirmed by diffing Requires/BuildRequires
+    against the previous spec - identical).
+
+ -- Louis van Belle <louis@van-belle.nl>  Thu, 29 Oct 2026 00:30:00 +0100
+
+grommunio-archive (1.4.9-3) trixie; urgency=medium
+
+  * Use catdoc's xls2csv (Debian) for Excel files, as piler does upstream, and
+    drop the libxls dependency and the community patch use_libxls.patch. That
+    patch made piler run "xls2csv -e utf-8 FILE", but libxls' tool takes the
+    file as its first argument (options after it), so it tried to open a file
+    named "-e" and every .xls attachment failed to extract. Found while
+    comparing the two tools.
+
+ -- Louis van Belle <louis@van-belle.nl>  Fri, 25 Sep 2026 10:00:00 +0200
+
+grommunio-archive (1.4.9-2) trixie; urgency=medium
+
+  * Add README.Debian (setup, file locations, text extraction, security notes,
+    removal and backup). Correct the -1 note: PowerPoint extraction works
+    through catppt; only the optional ppthtml is missing.
+  * grommunio-archive-setup: no invalid trailing comma in the Postfix
+    restrictions when the list is empty, no unknown "storedir" key (both were
+    already fixed in the published -1 after testing).
+
+ -- Louis van Belle <louis@van-belle.nl>  Fri, 25 Sep 2026 09:00:00 +0200
+
+grommunio-archive (1.4.9-1) trixie; urgency=medium
+
+  * Packaging of grommunio Archive 1.4.9 for the lvb trixie repository
+    (not in the community Debian_13 set). The source is the community
+    tarball piler-1.4.9.tar.xz (openSUSE Leap 16.0 src.rpm
+    grommunio-archive-1.4.9-lp160.3.40), which is identical to the upstream tag
+    piler-1.4.9 (commit d3f4b07) of github.com/jsuto/piler.
+  * The community's four patches are kept as quilt patches (no chown while
+    building, spool directory creation, libxls' xls2csv, and grommunio.patch
+    with the grommunio paths, branding and web UI changes); the sphinx
+    "workers = thread_pool" fix of the spec is a fifth patch.
+  * Installation layout as in the community package (/etc/grommunio-archive,
+    /usr/share/grommunio-archive with the web UI in .../archive,
+    /usr/libexec/grommunio-archive, /var/lib/grommunio-archive), with the
+    Debian conventions: cron in /etc/cron.d, PHP-FPM pool for the installed
+    PHP version, tmpfiles.d for the state directories.
+  * The tools that run as the archive user (pilerget, pilerimport, ...) are
+    installed 0755 root:root and made setuid groarchive with
+    dpkg-statoverride in postinst; the RPM's setuid root install is not used.
+  * Own systemd unit for Sphinx (grommunio-archive-searchd.service, running
+    Debian's searchd with /etc/sphinx/sphinx.conf as the user groarchive)
+    instead of a drop-in for openSUSE's searchd.service.
+  * Text extraction: PowerPoint files are handled by catppt (package catdoc).
+    The alternative ppthtml (xlhtml) does not exist in Debian and is not needed.
+  * grommunio-archive-setup replaces the archive role of the RPM setup
+    program (grommunio-setup 1.1.x): database, configuration, key, Sphinx
+    configuration and index, services and the Postfix copy-to-archive
+    wiring.
+
+ -- Louis van Belle <louis@van-belle.nl>  Thu, 24 Sep 2026 22:40:00 +0200

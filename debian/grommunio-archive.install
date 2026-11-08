@@ -1,0 +1,11 @@
+usr/bin
+usr/sbin
+usr/libexec
+usr/lib/*/libpiler.so.0.1.1
+usr/share/grommunio-archive
+etc/cron.d
+debian/nginx/locations.d/grommunio-archive.conf usr/share/grommunio-common/nginx/locations.d
+debian/nginx/upstreams.d/grommunio-archive.conf usr/share/grommunio-common/nginx/upstreams.d
+debian/grommunio-archive-setup usr/sbin
+debian/db-upgrade-grommunio.sql usr/share/grommunio-archive
+debian/setup-gk-app-g-archive usr/share/grommunio-auth/adaptor-config-scripts

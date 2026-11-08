@@ -1,0 +1,16 @@
+# Debian packaging build byproducts (when building directly in this tree)
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/*.debhelper.log
+debian/grommunio-archive/
+debian/grommunio-archive-dbgsym/
+
+# dpkg-buildpackage normally writes these one directory up, not here,
+# but ignore them too in case a tool is pointed at this directory.
+*.dsc
+*.tar.xz
+*.tar.gz
+*.deb
+*.changes
+*.buildinfo

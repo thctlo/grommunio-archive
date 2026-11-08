@@ -1,0 +1,201 @@
+#!/bin/bash
+# grommunio-archive-setup: create the database, the configuration, the key and
+# the search index of grommunio Archive, enable the services and wire Postfix
+# to copy all mail to the archive. Debian replacement for the archive role of
+# the RPM grommunio-setup program.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+
+PROGNAME=$(basename "$0")
+CONF_DIR=/etc/grommunio-archive
+DIST_DIR=/usr/share/grommunio-archive/dist
+STATE_DIR=/var/lib/grommunio-archive
+LOGFILE=/var/log/grommunio-archive/setup.log
+
+usage () {
+	cat <<USAGE
+Usage: $PROGNAME [options]
+  -f FQDN        fully qualified host name (default: hostname -f)
+  -d DOMAIN      mail domain (default: the domain part of the FQDN)
+  -H HOST        database host (default: localhost, created with the local root account)
+  -U USER        database user (default: groarchive)
+  -D NAME        database name (default: groarchive)
+  -P             do not change the Postfix configuration
+  -F             overwrite an existing configuration
+  -r             remove the Postfix wiring (mail is no longer copied to the archive)
+  -h             this help
+The database password and the passwords of the archive users "admin@local" and
+"auditor@local" are generated; set ARCHIVE_MYSQL_PASS, ARCHIVE_ADMIN_PASS and
+ARCHIVE_AUDIT_PASS to choose them. They are shown once at the end.
+USAGE
+}
+
+randpw () { tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "${1:-20}"; echo; }
+
+# Replace or append "key=value" (piler wants no blanks around the equals sign).
+setconf () {
+	local file="$1" key="$2" val="$3"
+	if grep -q "^[[:space:]]*;\?[[:space:]]*${key}=" "$file"; then
+		sed -i "0,/^[[:space:]]*;\?[[:space:]]*${key}=.*/s##${key}=${val//#/\\#}#" "$file"
+	else
+		printf '%s=%s\n' "$key" "$val" >> "$file"
+	fi
+}
+
+log () { echo "$(date '+%F %T') $*" >> "$LOGFILE"; echo "$*"; }
+
+postfix_enable () {
+	command -v postconf >/dev/null || { log "Postfix is not installed: skipping the mail copy setup."; return 0; }
+	echo '/(.*)/   prepend X-Envelope-To: $1' > /etc/postfix/grommunio-archiver-envelope.cf
+	local rr
+	rr=$(postconf -h smtpd_recipient_restrictions)
+	if ! echo "$rr" | grep -q 'grommunio-archiver-envelope.cf'; then
+		if echo "$rr" | grep -q 'permit_mynetworks'; then
+			rr=$(echo "$rr" | sed 's#permit_mynetworks#permit_mynetworks, check_recipient_access pcre:/etc/postfix/grommunio-archiver-envelope.cf#')
+		else
+			rr="check_recipient_access pcre:/etc/postfix/grommunio-archiver-envelope.cf${rr:+, $rr}"
+		fi
+		postconf -e "smtpd_recipient_restrictions=$rr"
+	fi
+	postconf -e "always_bcc=archive@${FQDN}"
+	echo "archive@${FQDN} smtp:[127.0.0.1]:2693" >> /etc/postfix/transport
+	sort -u -o /etc/postfix/transport /etc/postfix/transport
+	# Debian's Postfix builds its maps with the type of default_database_type (lmdb).
+	local dbtype tm
+	dbtype=$(postconf -h default_database_type)
+	postmap "${dbtype}:/etc/postfix/transport"
+	tm=$(postconf -h transport_maps)
+	echo "$tm" | grep -q '/etc/postfix/transport' || postconf -e "transport_maps=${tm:+$tm, }${dbtype}:/etc/postfix/transport"
+	systemctl try-reload-or-restart postfix.service >>"$LOGFILE" 2>&1 || true
+}
+
+postfix_disable () {
+	command -v postconf >/dev/null || return 0
+	local rr
+	rr=$(postconf -h smtpd_recipient_restrictions | sed 's#, *check_recipient_access pcre:/etc/postfix/grommunio-archiver-envelope.cf##; s#check_recipient_access pcre:/etc/postfix/grommunio-archiver-envelope.cf, *##')
+	postconf -e "smtpd_recipient_restrictions=$rr"
+	postconf -X always_bcc
+	if [ -f /etc/postfix/transport ]; then
+		sed -i '/^archive@.* smtp:\[127.0.0.1\]:2693$/d' /etc/postfix/transport
+		postmap "$(postconf -h default_database_type):/etc/postfix/transport"
+	fi
+	rm -f /etc/postfix/grommunio-archiver-envelope.cf
+	systemctl try-reload-or-restart postfix.service >>"$LOGFILE" 2>&1 || true
+}
+
+FQDN=$(hostname -f 2>/dev/null || true)
+DOMAIN=''
+MYSQL_HOST=${ARCHIVE_MYSQL_HOST:-localhost}
+MYSQL_USER=${ARCHIVE_MYSQL_USER:-groarchive}
+MYSQL_DB=${ARCHIVE_MYSQL_DB:-groarchive}
+DO_POSTFIX=1
+FORCE=0
+REMOVE=0
+while getopts 'f:d:H:U:D:PFrh' opt; do
+	case "$opt" in
+		f) FQDN=$OPTARG ;;
+		d) DOMAIN=$OPTARG ;;
+		H) MYSQL_HOST=$OPTARG ;;
+		U) MYSQL_USER=$OPTARG ;;
+		D) MYSQL_DB=$OPTARG ;;
+		P) DO_POSTFIX=0 ;;
+		F) FORCE=1 ;;
+		r) REMOVE=1 ;;
+		h) usage; exit 0 ;;
+		*) usage >&2; exit 2 ;;
+	esac
+done
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "$PROGNAME: this program must be run as root" >&2
+	exit 2
+fi
+install -d -m 0750 -o groarchive -g groarchive /var/log/grommunio-archive
+touch "$LOGFILE"; chmod 0600 "$LOGFILE"
+
+if [ "$REMOVE" = 1 ]; then
+	postfix_disable
+	log "The Postfix wiring was removed; the archive services keep running."
+	exit 0
+fi
+
+[ -n "$FQDN" ] || { echo "$PROGNAME: no FQDN (use -f)" >&2; exit 2; }
+[ -n "$DOMAIN" ] || DOMAIN=${FQDN#*.}
+[ "$DOMAIN" != "$FQDN" ] || DOMAIN=$FQDN
+
+if [ -s "$CONF_DIR/grommunio-archive.conf" ] && [ "$FORCE" != 1 ]; then
+	echo "$PROGNAME: $CONF_DIR/grommunio-archive.conf exists; use -F to overwrite (the database is kept)." >&2
+	exit 1
+fi
+
+MYSQL_PASS=${ARCHIVE_MYSQL_PASS:-$(randpw)}
+ADMIN_PASS=${ARCHIVE_ADMIN_PASS:-$(randpw)}
+AUDIT_PASS=${ARCHIVE_AUDIT_PASS:-$(randpw)}
+
+log "Database ${MYSQL_DB} on ${MYSQL_HOST} for user ${MYSQL_USER}"
+if [ "$MYSQL_HOST" = localhost ]; then
+	mysql <<SQL
+CREATE DATABASE IF NOT EXISTS \`${MYSQL_DB}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'localhost' IDENTIFIED BY '${MYSQL_PASS}';
+ALTER USER '${MYSQL_USER}'@'localhost' IDENTIFIED BY '${MYSQL_PASS}';
+GRANT ALL ON \`${MYSQL_DB}\`.* TO '${MYSQL_USER}'@'localhost';
+SQL
+fi
+MYSQL_CMD=(mysql -h"$MYSQL_HOST" -u"$MYSQL_USER" -p"$MYSQL_PASS" "$MYSQL_DB")
+"${MYSQL_CMD[@]}" -e 'select 1' >/dev/null || { echo "$PROGNAME: cannot connect to database ${MYSQL_DB} as ${MYSQL_USER} on ${MYSQL_HOST}" >&2; exit 1; }
+
+if ! "${MYSQL_CMD[@]}" -N -e "show tables like 'user'" | grep -q user; then
+	sed -e "s#grommunioArchiveAdmin#${ADMIN_PASS}#g" -e "s#grommunioArchiveAuditor#${AUDIT_PASS}#g" \
+		/usr/share/grommunio-archive/db-mysql.sql | "${MYSQL_CMD[@]}"
+	NEWDB=1
+else
+	log "The database already has the archive tables; the schema and the archive users are kept."
+	NEWDB=0
+fi
+
+# web interface
+sed -e "s#MYHOSTNAME#${FQDN}#g" -e "s#MYSMTP#${DOMAIN}#g" \
+	-e "s#MYSQL_HOSTNAME#${MYSQL_HOST}#" -e "s#MYSQL_DATABASE#${MYSQL_DB}#" \
+	-e "s#MYSQL_PASSWORD#${MYSQL_PASS//#/\\#}#" -e "s#MYSQL_USERNAME#${MYSQL_USER}#" \
+	"$DIST_DIR/config-site.dist.php" > "$CONF_DIR/config-site.php"
+chown root:groarchive "$CONF_DIR/config-site.php"; chmod 0640 "$CONF_DIR/config-site.php"
+
+# archive daemon
+cp -f "$DIST_DIR/grommunio-archive.conf.dist" "$CONF_DIR/grommunio-archive.conf"
+chown root:groarchive "$CONF_DIR/grommunio-archive.conf"; chmod 0640 "$CONF_DIR/grommunio-archive.conf"
+setconf "$CONF_DIR/grommunio-archive.conf" mysqluser "$MYSQL_USER"
+setconf "$CONF_DIR/grommunio-archive.conf" mysqlpwd "$MYSQL_PASS"
+setconf "$CONF_DIR/grommunio-archive.conf" mysqldb "$MYSQL_DB"
+[ "$MYSQL_HOST" = localhost ] || setconf "$CONF_DIR/grommunio-archive.conf" mysqlhost "$MYSQL_HOST"
+setconf "$CONF_DIR/grommunio-archive.conf" hostid "$FQDN"
+setconf "$CONF_DIR/grommunio-archive.conf" listen_addr 127.0.0.1
+
+# encryption key
+if [ ! -s "$CONF_DIR/grommunio-archive.key" ]; then
+	head -c 56 /dev/urandom > "$CONF_DIR/grommunio-archive.key"
+fi
+chown root:groarchive "$CONF_DIR/grommunio-archive.key"; chmod 0640 "$CONF_DIR/grommunio-archive.key"
+
+# Sphinx
+install -d -m 0755 /etc/sphinx
+php "$DIST_DIR/sphinx.conf.dist" > /etc/sphinx/sphinx.conf
+sed -i -e "s#MYSQL_HOSTNAME#${MYSQL_HOST}#" -e "s#MYSQL_DATABASE#${MYSQL_DB}#" \
+	-e "s#MYSQL_PASSWORD#${MYSQL_PASS//#/\\#}#" -e "s#MYSQL_USERNAME#${MYSQL_USER}#" /etc/sphinx/sphinx.conf
+chown root:groarchive /etc/sphinx/sphinx.conf; chmod 0640 /etc/sphinx/sphinx.conf
+systemd-tmpfiles --create grommunio-archive.conf 2>/dev/null || true
+runuser -u groarchive -- indexer --config /etc/sphinx/sphinx.conf --all >>"$LOGFILE" 2>&1 || log "indexer --all failed, see $LOGFILE"
+
+systemctl daemon-reload
+systemctl enable --now grommunio-archive-searchd.service grommunio-archive-smtp.service grommunio-archive.service >>"$LOGFILE" 2>&1 \
+	|| log "Could not start all services, see journalctl -u 'grommunio-archive*'"
+
+[ "$DO_POSTFIX" = 0 ] || postfix_enable
+
+log "grommunio Archive is set up."
+log "  web interface: https://${FQDN}/archive/"
+if [ "$NEWDB" = 1 ]; then
+	log "  archive user admin@local   password: ${ADMIN_PASS}"
+	log "  archive user auditor@local password: ${AUDIT_PASS}"
+fi
+log "  database ${MYSQL_DB} / user ${MYSQL_USER}: the password is in ${CONF_DIR}/grommunio-archive.conf"

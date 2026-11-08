@@ -1,0 +1,18 @@
+[Unit]
+Description=grommunio Archive daemon
+Documentation=https://www.mailpiler.org
+After=network.target mariadb.service grommunio-archive-searchd.service
+Wants=grommunio-archive-searchd.service
+
+[Service]
+ExecStart=/usr/sbin/piler -c /etc/grommunio-archive/grommunio-archive.conf
+PIDFile=/run/grommunio-archive/grommunio-archive.pid
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+User=groarchive
+Group=groarchive
+
+[Install]
+WantedBy=multi-user.target
+Alias=groarchive.service piler.service

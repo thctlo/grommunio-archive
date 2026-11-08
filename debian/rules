@@ -1,0 +1,79 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+
+PHP_VER := $(shell php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+B = debian/tmp
+SETUID_TOOLS = pileraget pilerexport pilerget pilerimport pilerstats pilertest reindex
+
+%:
+	dh $@ --without autoreconf
+
+override_dh_auto_configure:
+	dh_auto_configure -- --with-database=mysql
+
+# a race on common.o in the unit tests
+override_dh_auto_build:
+	$(MAKE) -j1
+
+override_dh_auto_test:
+	# The unit tests need a running MariaDB.
+
+override_dh_auto_install:
+	dh_auto_install --max-parallel=1 --destdir=$(B)
+	set -e; b=$(B); \
+	find $$b -name '*.a' -delete; \
+	rm -f $$b/usr/libexec/piler/*.service; \
+	rm -rf $$b/etc/init.d; \
+	mv $$b/usr/share/piler $$b/usr/share/grommunio-archive; \
+	mv $$b/var/piler/www $$b/usr/share/grommunio-archive/archive; \
+	rm -rf $$b/var/piler; \
+	mv $$b/usr/libexec/piler $$b/usr/libexec/grommunio-archive; \
+	mv $$b/etc/piler $$b/etc/grommunio-archive; \
+	mv $$b/etc/grommunio-archive/piler.conf.dist $$b/etc/grommunio-archive/grommunio-archive.conf.dist; \
+	rm -f $$b/etc/grommunio-archive/manticore.conf.dist; \
+	sed -i 's#/usr/lib/grommunio-archive#/usr/libexec/grommunio-archive#g' \
+		$$b/usr/libexec/grommunio-archive/indexer.delta.sh \
+		$$b/usr/libexec/grommunio-archive/indexer.main.sh \
+		$$b/usr/libexec/grommunio-archive/purge.sh; \
+	mkdir -p $$b/usr/share/grommunio-archive/dist; \
+	for f in config-site.dist.php grommunio-archive.conf.dist sphinx.conf.dist; do \
+		mv $$b/etc/grommunio-archive/$$f $$b/usr/share/grommunio-archive/dist/; done; \
+	mv $$b/etc/grommunio-archive/smtp.acl.example $$b/usr/share/grommunio-archive/dist/ 2>/dev/null || true; \
+	rmdir $$b/etc/grommunio-archive; \
+	rm -rf $$b/usr/share/grommunio-archive/archive/log $$b/usr/share/grommunio-archive/archive/tmp; \
+	ln -s /var/log/grommunio-archive $$b/usr/share/grommunio-archive/archive/log; \
+	ln -s /var/lib/grommunio-archive/tmp $$b/usr/share/grommunio-archive/archive/tmp; \
+	install -d $$b/etc/cron.d; \
+	grep -v '^#' $$b/usr/share/grommunio-archive/grommunio-archive.cron | grep -v '^$$' \
+		| sed -E 's#^(([^ ]+ +){5})#\1groarchive #; s#/var/piler/www/tmp#/var/lib/grommunio-archive/tmp#g; s#/var/piler/error#/var/lib/grommunio-archive/error#g; s#/var/piler/stat#/var/lib/grommunio-archive/stat#g; s#/var/piler/www#/usr/share/grommunio-archive/archive#g; s#LIBEXECDIR/piler#/usr/libexec/grommunio-archive#g; s#/usr/lib/grommunio-archive#/usr/libexec/grommunio-archive#g' \
+		> $$b/etc/cron.d/grommunio-archive; \
+	rm -f $$b/usr/share/grommunio-archive/grommunio-archive.cron; \
+	rm -f $$b/usr/libexec/grommunio-archive/postinstall.sh \
+		$$b/usr/share/grommunio-archive/archive/.htaccess \
+		$$b/usr/share/grommunio-archive/archive/securimage/securimage_play.swf; \
+	find $$b/usr/share/grommunio-archive/archive -type f -perm /111 -exec chmod a-x {} +; \
+	rm -f $$b/usr/lib/*/libpiler.so $$b/usr/lib/*/libpiler.so.0; \
+	find $$b -type f
+	# The tools run as the archive user; their setuid bit is set with
+	# dpkg-statoverride in postinst (they must not ship setuid root).
+	for t in $(SETUID_TOOLS); do chmod 0755 $(B)/usr/bin/$$t; done
+	install -d debian/grommunio-archive/etc/php/$(PHP_VER)/fpm/pool.d
+	install -m 0644 debian/pool-grommunio-archive.conf.in debian/grommunio-archive/etc/php/$(PHP_VER)/fpm/pool.d/pool-grommunio-archive.conf
+
+override_dh_install:
+	dh_install
+	# grommunio-auth's own adaptor convention: a delete-gk-app-* symlink next
+	# to each setup-gk-app-* script, for de-configuring the OIDC client
+	# (same pattern grommunio-files/-web/-admin-api already use in this
+	# shared directory).
+	ln -sf setup-gk-app-g-archive \
+		debian/grommunio-archive/usr/share/grommunio-auth/adaptor-config-scripts/delete-gk-app-g-archive
+
+override_dh_missing:
+	dh_missing --list-missing
+
+override_dh_installsystemd:
+	dh_installsystemd --name=grommunio-archive --no-start --no-enable
+	dh_installsystemd --name=grommunio-archive-smtp --no-start --no-enable
+	dh_installsystemd --name=grommunio-archive-searchd --no-start --no-enable

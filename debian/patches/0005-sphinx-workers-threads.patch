@@ -1,0 +1,18 @@
+Description: Use the classic Sphinx "threads" worker model.
+ Classic Sphinx 2.2.x (Debian's sphinxsearch, the grommunio search backend) does not
+ know the Manticore/Sphinx-3 "thread_pool" value that piler 1.4.9 ships in its
+ searchd template and aborts with "FATAL: unknown workers=thread_pool value".
+Author: grommunio <dev@grommunio.com>
+Origin: vendor
+Forwarded: not-needed
+Last-Update: 2026-09-24
+
+--- a/etc/sphinx.conf.in	2026-09-24 22:30:20.250182416 +0200
++++ b/etc/sphinx.conf.in	2026-09-24 22:30:20.254180416 +0200
+@@ -279,5 +279,5 @@
+         preopen_indexes         = 1
+         unlink_old              = 1
+         thread_stack            = 512k
+-        workers                 = thread_pool
++        workers                 = threads
+ }

@@ -1,0 +1,16 @@
+Description: Default to the MariaDB socket path of Debian (/run/mysqld/mysqld.sock).
+Author: Louis van Belle <louis@van-belle.nl>
+Forwarded: not-needed
+Last-Update: 2026-09-24
+
+--- a/etc/example.conf	2026-09-24 22:32:24.064244472 +0200
++++ b/etc/example.conf	2026-09-24 22:32:24.068242472 +0200
+@@ -212,7 +212,7 @@
+ ;mysqlhost=127.0.0.1
+ ;mysqlport=3306
+ mysqlhost=
+-mysqlsocket=/run/mysql/mysql.sock
++mysqlsocket=/run/mysqld/mysqld.sock
+ mysqluser=groarchive
+ mysqlpwd=groarchive
+ mysqldb=groarchive

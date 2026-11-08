@@ -1,0 +1,935 @@
+diff -Naur a/piler-1.4.9/config.php.in b/piler-1.4.9/config.php.in
+--- piler-1.4.9/config.php.in	2026-09-26 00:59:10.879118282 +0200
++++ piler-1.4.9/config.php.in	2026-09-26 01:05:22.890775143 +0200
+@@ -413,6 +413,7 @@
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.min.css" integrity="sha256-6MNujrdbV0Z7S927PzUMXOmMLwkKdsdD7XIl/w89HMQ=" crossorigin="anonymous">
+ 
+    <link rel="stylesheet" href="' . $config['PATH_PREFIX'] . 'assets/css/piler.css" />
++   <link rel="stylesheet" href="' . $config['PATH_PREFIX'] . 'assets/css/grommunio-login.css" />
+ ';
+ 
+ 
+diff -Naur a/piler-1.4.9/webui/assets/css/grommunio-login.css b/piler-1.4.9/webui/assets/css/grommunio-login.css
+--- piler-1.4.9/webui/assets/css/grommunio-login.css	1970-01-01 01:00:00.000000000 +0100
++++ piler-1.4.9/webui/assets/css/grommunio-login.css	2026-09-26 12:28:08.743871012 +0200
+@@ -0,0 +1,511 @@
++/*
++ * SPDX-FileCopyrightText: Copyright 2026 grommunio GmbH
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * Login, 2FA, 4-eyes and logout pages; scoped to body#loginpage.
++ * --brand-* custom properties override the product defaults given as fallbacks.
++ */
++
++body#loginpage {
++  --gl-primary: var(--brand-primary, #009FFD);
++  --gl-on-primary: var(--brand-on-primary, #ffffff);
++  --gl-accent: var(--brand-accent, var(--brand-primary, #009FFD));
++  --gl-surface: var(--brand-surface, #ffffff);
++  --gl-text: var(--brand-text, #1d2939);
++  --gl-muted: var(--brand-muted, #667085);
++  --gl-field: var(--brand-field, #eef0f3);
++  --gl-field-hover: var(--brand-field-hover, #e6e9ee);
++  --gl-error: var(--brand-error, #b42318);
++  --gl-error-bg: var(--brand-error-bg, #fef3f2);
++  --gl-error-border: var(--brand-error-border, #fecdca);
++  --gl-radius: var(--brand-radius, 20px);
++  --gl-radius-sm: var(--brand-radius-sm, 10px);
++  --gl-logo-filter: none;
++
++  margin: 0;
++  padding: 24px 16px;
++  min-height: 100vh;
++  box-sizing: border-box;
++  display: grid;
++  place-items: center;
++  font-family: var(--brand-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
++  font-size: 13px;
++  line-height: 1.5;
++  color: var(--gl-text);
++  text-transform: none;
++  background-color: var(--brand-gradient-end, #2a2a72);
++  background-image:
++    var(--brand-bg-overlay, url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA3Ij48cGF0aCBkPSJNMCAyNjUuMTZzMi41Ny0yLjkzIDIxLjYxIDE1LjkzbDM2NC44NCAzNjEuNTcgMzY0Ljg0IDM2MS41N2MzMC43MSAzMC40MyAyOC4zOCA3NS43NCAyOC4zOCA3NS43NEgwVjI2NS4xNloiLz48cGF0aCBkPSJNMCAwdjYyNGwxMzQuMzkgMTMzLjA3YzE5LjAzIDE4Ljg2IDQzLjk4IDI4LjMgNjguOTMgMjguM3M0OS45LTkuNDMgNjguOTMtMjguM0w2MzcuMDkgMzk1LjVsMzY0Ljg0LTM2MS41OEMxMDI4LjI5IDExLjY2IDEwMjQgMCAxMDI0IDBIMFpNMTkyMCAxMDgwaC0zNzdsLTE0NS43MS0xNDYuMWMtMTguOTQtMTkuMTItMjguNDItNDQuMTctMjguNDItNjkuMjIgMC0yNS4wNSA5LjQ3LTUwLjExIDI4LjQyLTY5LjIyTDE5MjAgMjY4djgxMloiLz48L2c+PC9zdmc+)),
++    var(--brand-bg-image, none),
++    radial-gradient(120% 90% at 100% 100%, rgba(255, 255, 255, 0.14), transparent 55%),
++    linear-gradient(var(--brand-gradient-angle, 150deg), var(--brand-gradient-start, #009FFD), var(--brand-gradient-end, #2a2a72));
++  background-size: cover, var(--brand-bg-size, cover), auto, auto;
++  background-position: center, var(--brand-bg-position, center), center, center;
++  background-repeat: no-repeat;
++}
++
++@media (prefers-color-scheme: dark) {
++  :root:not([data-theme="light"]) body#loginpage {
++    --gl-surface: var(--brand-surface, #23262b);
++    --gl-text: var(--brand-text, #e6e6e6);
++    --gl-muted: var(--brand-muted, #98a2b3);
++    --gl-field: var(--brand-field, #2b2f36);
++    --gl-field-hover: var(--brand-field-hover, #323740);
++    --gl-error: var(--brand-error, #fda29b);
++    --gl-error-bg: var(--brand-error-bg, #3a2320);
++    --gl-error-border: var(--brand-error-border, #5c2e2a);
++    --gl-logo-filter: var(--brand-logo-filter, invert(1) hue-rotate(180deg));
++
++    background-color: #0b0f14;
++    background-image:
++      var(--brand-bg-overlay, url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA3Ij48cGF0aCBkPSJNMCAyNjUuMTZzMi41Ny0yLjkzIDIxLjYxIDE1LjkzbDM2NC44NCAzNjEuNTcgMzY0Ljg0IDM2MS41N2MzMC43MSAzMC40MyAyOC4zOCA3NS43NCAyOC4zOCA3NS43NEgwVjI2NS4xNloiLz48cGF0aCBkPSJNMCAwdjYyNGwxMzQuMzkgMTMzLjA3YzE5LjAzIDE4Ljg2IDQzLjk4IDI4LjMgNjguOTMgMjguM3M0OS45LTkuNDMgNjguOTMtMjguM0w2MzcuMDkgMzk1LjVsMzY0Ljg0LTM2MS41OEMxMDI4LjI5IDExLjY2IDEwMjQgMCAxMDI0IDBIMFpNMTkyMCAxMDgwaC0zNzdsLTE0NS43MS0xNDYuMWMtMTguOTQtMTkuMTItMjguNDItNDQuMTctMjguNDItNjkuMjIgMC0yNS4wNSA5LjQ3LTUwLjExIDI4LjQyLTY5LjIyTDE5MjAgMjY4djgxMloiLz48L2c+PC9zdmc+)),
++      var(--brand-bg-image, none),
++      linear-gradient(var(--brand-gradient-angle, 150deg), #055e94, #1c1e48);
++    background-size: cover, var(--brand-bg-size, cover), auto;
++    background-position: center, var(--brand-bg-position, center), center;
++  }
++
++  @supports (color: color-mix(in srgb, red, blue)) {
++    :root:not([data-theme="light"]) body#loginpage {
++      background-image:
++        var(--brand-bg-overlay, url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA3Ij48cGF0aCBkPSJNMCAyNjUuMTZzMi41Ny0yLjkzIDIxLjYxIDE1LjkzbDM2NC44NCAzNjEuNTcgMzY0Ljg0IDM2MS41N2MzMC43MSAzMC40MyAyOC4zOCA3NS43NCAyOC4zOCA3NS43NEgwVjI2NS4xNloiLz48cGF0aCBkPSJNMCAwdjYyNGwxMzQuMzkgMTMzLjA3YzE5LjAzIDE4Ljg2IDQzLjk4IDI4LjMgNjguOTMgMjguM3M0OS45LTkuNDMgNjguOTMtMjguM0w2MzcuMDkgMzk1LjVsMzY0Ljg0LTM2MS41OEMxMDI4LjI5IDExLjY2IDEwMjQgMCAxMDI0IDBIMFpNMTkyMCAxMDgwaC0zNzdsLTE0NS43MS0xNDYuMWMtMTguOTQtMTkuMTItMjguNDItNDQuMTctMjguNDItNjkuMjIgMC0yNS4wNSA5LjQ3LTUwLjExIDI4LjQyLTY5LjIyTDE5MjAgMjY4djgxMloiLz48L2c+PC9zdmc+)),
++        var(--brand-bg-image, none),
++        linear-gradient(var(--brand-gradient-angle, 150deg), color-mix(in srgb, var(--brand-gradient-start, #009FFD) 55%, #0b0f14), color-mix(in srgb, var(--brand-gradient-end, #2a2a72) 55%, #0b0f14));
++    }
++  }
++}
++
++html[data-theme="dark"] body#loginpage {
++  --gl-surface: var(--brand-surface, #23262b);
++  --gl-text: var(--brand-text, #e6e6e6);
++  --gl-muted: var(--brand-muted, #98a2b3);
++  --gl-field: var(--brand-field, #2b2f36);
++  --gl-field-hover: var(--brand-field-hover, #323740);
++  --gl-error: var(--brand-error, #fda29b);
++  --gl-error-bg: var(--brand-error-bg, #3a2320);
++  --gl-error-border: var(--brand-error-border, #5c2e2a);
++  --gl-logo-filter: var(--brand-logo-filter, invert(1) hue-rotate(180deg));
++
++  background-color: #0b0f14;
++  background-image:
++    var(--brand-bg-overlay, url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA3Ij48cGF0aCBkPSJNMCAyNjUuMTZzMi41Ny0yLjkzIDIxLjYxIDE1LjkzbDM2NC44NCAzNjEuNTcgMzY0Ljg0IDM2MS41N2MzMC43MSAzMC40MyAyOC4zOCA3NS43NCAyOC4zOCA3NS43NEgwVjI2NS4xNloiLz48cGF0aCBkPSJNMCAwdjYyNGwxMzQuMzkgMTMzLjA3YzE5LjAzIDE4Ljg2IDQzLjk4IDI4LjMgNjguOTMgMjguM3M0OS45LTkuNDMgNjguOTMtMjguM0w2MzcuMDkgMzk1LjVsMzY0Ljg0LTM2MS41OEMxMDI4LjI5IDExLjY2IDEwMjQgMCAxMDI0IDBIMFpNMTkyMCAxMDgwaC0zNzdsLTE0NS43MS0xNDYuMWMtMTguOTQtMTkuMTItMjguNDItNDQuMTctMjguNDItNjkuMjIgMC0yNS4wNSA5LjQ3LTUwLjExIDI4LjQyLTY5LjIyTDE5MjAgMjY4djgxMloiLz48L2c+PC9zdmc+)),
++    var(--brand-bg-image, none),
++    linear-gradient(var(--brand-gradient-angle, 150deg), #055e94, #1c1e48);
++  background-size: cover, var(--brand-bg-size, cover), auto;
++  background-position: center, var(--brand-bg-position, center), center;
++}
++
++@supports (color: color-mix(in srgb, red, blue)) {
++  html[data-theme="dark"] body#loginpage {
++    background-image:
++      var(--brand-bg-overlay, url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIwIDEwODAiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iLjA3Ij48cGF0aCBkPSJNMCAyNjUuMTZzMi41Ny0yLjkzIDIxLjYxIDE1LjkzbDM2NC44NCAzNjEuNTcgMzY0Ljg0IDM2MS41N2MzMC43MSAzMC40MyAyOC4zOCA3NS43NCAyOC4zOCA3NS43NEgwVjI2NS4xNloiLz48cGF0aCBkPSJNMCAwdjYyNGwxMzQuMzkgMTMzLjA3YzE5LjAzIDE4Ljg2IDQzLjk4IDI4LjMgNjguOTMgMjguM3M0OS45LTkuNDMgNjguOTMtMjguM0w2MzcuMDkgMzk1LjVsMzY0Ljg0LTM2MS41OEMxMDI4LjI5IDExLjY2IDEwMjQgMCAxMDI0IDBIMFpNMTkyMCAxMDgwaC0zNzdsLTE0NS43MS0xNDYuMWMtMTguOTQtMTkuMTItMjguNDItNDQuMTctMjguNDItNjkuMjIgMC0yNS4wNSA5LjQ3LTUwLjExIDI4LjQyLTY5LjIyTDE5MjAgMjY4djgxMloiLz48L2c+PC9zdmc+)),
++      var(--brand-bg-image, none),
++      linear-gradient(var(--brand-gradient-angle, 150deg), color-mix(in srgb, var(--brand-gradient-start, #009FFD) 55%, #0b0f14), color-mix(in srgb, var(--brand-gradient-end, #2a2a72) 55%, #0b0f14));
++  }
++}
++
++/* Theme toggle, top right of the viewport */
++body#loginpage #theme-toggle {
++  position: fixed;
++  top: 16px;
++  right: 16px;
++  z-index: 1000;
++  width: 40px;
++  height: 40px;
++  margin: 0;
++  padding: 0;
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  border: 1px solid rgba(255, 255, 255, 0.28);
++  border-radius: 50%;
++  background: rgba(255, 255, 255, 0.16);
++  color: #ffffff;
++  font-size: 18px;
++  line-height: 1;
++  cursor: pointer;
++  transition: background-color 0.15s ease;
++}
++
++body#loginpage #theme-toggle:hover {
++  background: rgba(255, 255, 255, 0.28);
++}
++
++body#loginpage #theme-toggle:focus-visible {
++  outline: none;
++  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
++}
++
++body#loginpage #theme-icon {
++  font-size: 18px;
++  line-height: 1;
++}
++
++/* Card */
++body#loginpage #logincontainer {
++  width: 100%;
++  max-width: 400px;
++  margin: 0 auto 12vh;
++  padding: 0;
++  text-transform: none;
++}
++
++body#loginpage #logincard {
++  box-sizing: border-box;
++  position: relative;
++  overflow: hidden;
++  width: 100%;
++  padding: 40px 40px 36px;
++  border-radius: var(--gl-radius);
++  background: var(--gl-surface);
++  color: var(--gl-text);
++  box-shadow: 0 24px 64px rgba(16, 24, 40, 0.28), 0 2px 8px rgba(16, 24, 40, 0.12);
++  text-align: center;
++  animation: gl-login-appear 0.35s ease-out both;
++}
++
++@keyframes gl-login-appear {
++  from {
++    opacity: 0;
++    transform: translateY(8px);
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  body#loginpage #logincard {
++    animation: none;
++  }
++}
++
++body#loginpage #logo-lg {
++  width: var(--brand-logo-width, 220px);
++  height: var(--brand-logo-height, 52px);
++  max-width: 100%;
++  margin: 4px auto 0;
++  background-repeat: no-repeat;
++  background-position: center;
++  background-size: contain;
++  filter: var(--gl-logo-filter);
++}
++
++/* Product mark: chip under the logo and a badge in the card's top-right corner
++   (icon: Material Icons "archive", Apache-2.0) */
++body#loginpage .product-chip {
++  display: inline-flex;
++  align-items: center;
++  gap: 6px;
++  margin: 12px auto 22px;
++  padding: 4px 10px;
++  border-radius: 999px;
++  background: rgba(0, 159, 253, 0.12);
++  color: var(--gl-primary);
++  font-size: 12px;
++  font-weight: 600;
++  line-height: 1;
++  letter-spacing: 0.02em;
++  vertical-align: top;
++}
++
++body#loginpage .product-badge {
++  position: absolute;
++  top: 16px;
++  right: 16px;
++  z-index: 1;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  width: 44px;
++  height: 44px;
++  border: 0;
++  border-radius: 50%;
++  background: rgba(0, 159, 253, 0.12);
++  color: var(--gl-primary);
++  box-shadow: none;
++  pointer-events: none;
++}
++
++@supports (color: color-mix(in srgb, red, blue)) {
++  body#loginpage .product-chip,
++  body#loginpage .product-badge {
++    background: color-mix(in srgb, var(--gl-primary) 12%, transparent);
++  }
++}
++
++body#loginpage .product-chip .icon,
++body#loginpage .product-badge::before {
++  display: inline-block;
++  background-color: currentColor;
++  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5 6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z'/%3E%3C/svg%3E");
++  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5 6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z'/%3E%3C/svg%3E");
++  -webkit-mask-size: contain;
++  mask-size: contain;
++  -webkit-mask-repeat: no-repeat;
++  mask-repeat: no-repeat;
++}
++
++body#loginpage .product-chip .icon {
++  width: 14px;
++  height: 14px;
++}
++
++body#loginpage .product-badge::before {
++  content: "";
++  width: 22px;
++  height: 22px;
++  background-color: var(--gl-primary);
++}
++
++body#loginpage h2,
++body#loginpage h3 {
++  margin: 0 0 16px;
++  font-family: inherit;
++  font-size: 13px;
++  font-weight: 500;
++  line-height: 1.4;
++  color: var(--gl-muted);
++  text-transform: none;
++}
++
++body#loginpage p {
++  margin: 0 0 12px;
++}
++
++body#loginpage a {
++  color: var(--gl-accent);
++  text-decoration: none;
++}
++
++body#loginpage a:hover {
++  color: var(--gl-accent);
++  text-decoration: underline;
++}
++
++/* Form */
++body#loginpage .form-signin {
++  max-width: none;
++  margin: 0;
++  padding: 0;
++  border: 0;
++  border-radius: 0;
++  background: transparent;
++  box-shadow: none;
++}
++
++body#loginpage .login-label {
++  position: absolute;
++  width: 1px;
++  height: 1px;
++  padding: 0;
++  margin: -1px;
++  overflow: hidden;
++  clip: rect(0, 0, 0, 0);
++  white-space: nowrap;
++  border: 0;
++}
++
++body#loginpage .form-control {
++  display: block;
++  box-sizing: border-box;
++  width: 100%;
++  height: 44px;
++  margin: 0 0 12px;
++  padding: 0 16px;
++  font-family: inherit;
++  font-size: 15px;
++  font-weight: 400;
++  line-height: 1.5;
++  color: var(--gl-text);
++  background: var(--gl-field);
++  border: 1px solid transparent;
++  border-radius: var(--gl-radius-sm);
++  box-shadow: none;
++  outline: 0;
++  appearance: none;
++  -webkit-appearance: none;
++  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
++}
++
++body#loginpage .form-control::placeholder {
++  color: var(--gl-muted);
++  opacity: 1;
++}
++
++body#loginpage .form-control:hover {
++  background: var(--gl-field-hover);
++}
++
++body#loginpage .form-control:focus {
++  outline: 0;
++  color: var(--gl-text);
++  background: var(--gl-surface);
++  border-color: var(--gl-primary);
++  box-shadow: 0 0 0 3px rgba(0, 159, 253, 0.18);
++}
++
++@supports (color: color-mix(in srgb, red, blue)) {
++  body#loginpage .form-control:focus {
++    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gl-primary) 18%, transparent);
++  }
++}
++
++body#loginpage .form-control:-webkit-autofill,
++body#loginpage .form-control:-webkit-autofill:hover {
++  -webkit-box-shadow: 0 0 0px 1000px var(--gl-field) inset;
++  box-shadow: 0 0 0px 1000px var(--gl-field) inset;
++  -webkit-text-fill-color: var(--gl-text);
++  caret-color: var(--gl-text);
++}
++
++body#loginpage .form-control:autofill,
++body#loginpage .form-control:autofill:hover {
++  box-shadow: 0 0 0px 1000px var(--gl-field) inset;
++  -webkit-text-fill-color: var(--gl-text);
++  color: var(--gl-text);
++  caret-color: var(--gl-text);
++}
++
++body#loginpage .form-control:-webkit-autofill:focus {
++  -webkit-box-shadow: 0 0 0px 1000px var(--gl-surface) inset, 0 0 0 3px rgba(0, 159, 253, 0.18);
++  box-shadow: 0 0 0px 1000px var(--gl-surface) inset, 0 0 0 3px rgba(0, 159, 253, 0.18);
++}
++
++body#loginpage .form-control:autofill:focus {
++  box-shadow: 0 0 0px 1000px var(--gl-surface) inset, 0 0 0 3px rgba(0, 159, 253, 0.18);
++}
++
++@supports (color: color-mix(in srgb, red, blue)) {
++  body#loginpage .form-control:-webkit-autofill:focus {
++    -webkit-box-shadow: 0 0 0px 1000px var(--gl-surface) inset, 0 0 0 3px color-mix(in srgb, var(--gl-primary) 18%, transparent);
++    box-shadow: 0 0 0px 1000px var(--gl-surface) inset, 0 0 0 3px color-mix(in srgb, var(--gl-primary) 18%, transparent);
++  }
++
++  body#loginpage .form-control:autofill:focus {
++    box-shadow: 0 0 0px 1000px var(--gl-surface) inset, 0 0 0 3px color-mix(in srgb, var(--gl-primary) 18%, transparent);
++  }
++}
++
++body#loginpage #captcha {
++  display: block;
++  max-width: 100%;
++  height: auto;
++  margin: 0 auto 12px;
++  border-radius: var(--gl-radius-sm);
++}
++
++body#loginpage .alert {
++  margin: 0 0 12px;
++  padding: 10px 12px;
++  border: 1px solid var(--gl-error-border);
++  border-left-width: 4px;
++  border-radius: var(--gl-radius-sm);
++  background: var(--gl-error-bg);
++  color: var(--gl-error);
++  font-size: 13px;
++  font-weight: 400;
++  line-height: 1.4;
++  text-align: left;
++}
++
++body#loginpage .alert:empty {
++  display: none;
++}
++
++/* Buttons */
++body#loginpage .btn {
++  display: block;
++  box-sizing: border-box;
++  width: 100%;
++  height: 44px;
++  margin: 12px 0 0;
++  padding: 0 16px;
++  font-family: inherit;
++  font-size: 15px;
++  font-weight: 600;
++  line-height: 42px;
++  text-align: center;
++  color: var(--gl-text);
++  background: var(--gl-field);
++  border: 1px solid transparent;
++  border-radius: var(--gl-radius-sm);
++  box-shadow: none;
++  cursor: pointer;
++  transition: filter 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
++}
++
++body#loginpage .btn:hover {
++  color: var(--gl-text);
++  background: var(--gl-field-hover);
++}
++
++body#loginpage .btn-primary,
++body#loginpage .btn-primary:hover,
++body#loginpage .btn-primary:active {
++  color: var(--gl-on-primary);
++  background: var(--gl-primary);
++  border-color: transparent;
++  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.16);
++}
++
++body#loginpage .btn-primary:hover {
++  filter: brightness(0.92);
++}
++
++body#loginpage .btn-primary:active {
++  filter: brightness(0.86);
++}
++
++body#loginpage .btn:focus-visible {
++  outline: none;
++  box-shadow: 0 0 0 2px var(--gl-surface), 0 0 0 4px var(--gl-primary);
++}
++
++/* Notes below the form (Google login link, LOGIN_EXTRA_NOTES) */
++body#loginpage .login-notes {
++  margin: 0;
++  font-size: 13px;
++  color: var(--gl-muted);
++}
++
++body#loginpage .login-notes p {
++  margin: 16px 0 0;
++}
++
++body#loginpage .login-notes p:empty,
++body#loginpage .login-notes:empty {
++  display: none;
++}
++
++@media (max-width: 480px) {
++  body#loginpage {
++    padding: 16px;
++  }
++
++  body#loginpage #logincontainer {
++    margin-bottom: 0;
++  }
++
++  body#loginpage #logincard {
++    padding: 28px 20px 24px;
++  }
++
++  body#loginpage #logo-lg {
++    max-width: calc(100% - 72px);
++  }
++
++  body#loginpage .form-control {
++    font-size: 16px;
++  }
++
++  body#loginpage #theme-toggle {
++    top: 12px;
++    right: 12px;
++    width: 36px;
++    height: 36px;
++    font-size: 16px;
++  }
++
++  body#loginpage .product-badge {
++    top: 12px;
++    right: 12px;
++  }
++}
+diff -Naur a/piler-1.4.9/webui/assets/js/dark-mode.js b/piler-1.4.9/webui/assets/js/dark-mode.js
+--- piler-1.4.9/webui/assets/js/dark-mode.js	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/assets/js/dark-mode.js	2026-09-26 01:05:22.890545910 +0200
+@@ -31,11 +31,7 @@
+    * Apply theme to document
+    */
+   function applyTheme(theme) {
+-    if (theme === THEME_DARK) {
+-      document.documentElement.setAttribute('data-theme', 'dark');
+-    } else {
+-      document.documentElement.removeAttribute('data-theme');
+-    }
++    document.documentElement.setAttribute('data-theme', theme === THEME_DARK ? THEME_DARK : THEME_LIGHT);
+ 
+     // Update icon
+     const icon = document.getElementById('theme-icon');
+diff -Naur a/piler-1.4.9/webui/templates/common/layout-audit-removal.tpl b/piler-1.4.9/webui/templates/common/layout-audit-removal.tpl
+--- piler-1.4.9/webui/templates/common/layout-audit-removal.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/common/layout-audit-removal.tpl	2026-09-26 01:05:22.891142510 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="<?php print DEFAULT_LANG; ?>">
++<html lang="<?php print DEFAULT_LANG; ?>" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+ <head>
+   <title><?php print $title; ?></title>
+   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+@@ -15,6 +15,7 @@
+ 
+   <?php print CSS_CODE; ?>
+   <?php print CUSTOM_CSS; ?>
++  <link rel="stylesheet" href="/brand/brand.css">
+ 
+   <?php print BRANDING_FAVICON; ?>
+ </head>
+diff -Naur a/piler-1.4.9/webui/templates/common/layout-audit.tpl b/piler-1.4.9/webui/templates/common/layout-audit.tpl
+--- piler-1.4.9/webui/templates/common/layout-audit.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/common/layout-audit.tpl	2026-09-26 01:05:22.891034967 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="<?php print DEFAULT_LANG; ?>">
++<html lang="<?php print DEFAULT_LANG; ?>" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+ <head>
+   <title><?php print $title; ?></title>
+   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+@@ -15,6 +15,7 @@
+ 
+   <?php print CSS_CODE; ?>
+   <?php print CUSTOM_CSS; ?>
++  <link rel="stylesheet" href="/brand/brand.css">
+ 
+   <?php print BRANDING_FAVICON; ?>
+ </head>
+diff -Naur a/piler-1.4.9/webui/templates/common/layout-email.tpl b/piler-1.4.9/webui/templates/common/layout-email.tpl
+--- piler-1.4.9/webui/templates/common/layout-email.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/common/layout-email.tpl	2026-09-26 01:05:22.891349919 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="<?php print DEFAULT_LANG; ?>">
++<html lang="<?php print DEFAULT_LANG; ?>" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+ 
+ <head>
+   <title><?php print $title; ?></title>
+@@ -13,6 +13,7 @@
+ 
+   <?php print CSS_CODE; ?>
+   <?php print CUSTOM_CSS; ?>
++  <link rel="stylesheet" href="/brand/brand.css">
+ 
+   <?php print BRANDING_FAVICON; ?>
+ 
+diff -Naur a/piler-1.4.9/webui/templates/common/layout-search.tpl b/piler-1.4.9/webui/templates/common/layout-search.tpl
+--- piler-1.4.9/webui/templates/common/layout-search.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/common/layout-search.tpl	2026-09-26 01:05:22.891252808 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="<?php print DEFAULT_LANG; ?>">
++<html lang="<?php print DEFAULT_LANG; ?>" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+ <head>
+   <title><?php print $title; ?></title>
+   <meta http-equiv="content-type" content="text/html; charset=utf-8" />
+@@ -15,6 +15,7 @@
+ 
+   <?php print CSS_CODE; ?>
+   <?php print CUSTOM_CSS; ?>
++  <link rel="stylesheet" href="/brand/brand.css">
+ 
+   <?php print BRANDING_FAVICON; ?>
+ </head>
+diff -Naur a/piler-1.4.9/webui/templates/common/layout.tpl b/piler-1.4.9/webui/templates/common/layout.tpl
+--- piler-1.4.9/webui/templates/common/layout.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/common/layout.tpl	2026-09-26 01:05:22.890920267 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="<?php print DEFAULT_LANG; ?>">
++<html lang="<?php print DEFAULT_LANG; ?>" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+ 
+ <head>
+   <title><?php print $title; ?></title>
+@@ -13,6 +13,7 @@
+ 
+   <?php print CSS_CODE; ?>
+   <?php print CUSTOM_CSS; ?>
++  <link rel="stylesheet" href="/brand/brand.css">
+ 
+   <?php print BRANDING_FAVICON; ?>
+ </head>
+diff -Naur a/piler-1.4.9/webui/templates/login/foureyes.tpl b/piler-1.4.9/webui/templates/login/foureyes.tpl
+--- piler-1.4.9/webui/templates/login/foureyes.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/login/foureyes.tpl	2026-09-26 12:25:06.806578390 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="en">
++<html lang="en" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+   <head>
+     <meta charset="utf-8">
+     <title><?php if($title_prefix) { print $title_prefix; ?> | <?php } ?><?php print $title; ?></title>
+@@ -10,6 +10,8 @@
+ 
+     <?php print CSS_CODE; ?>
+     <?php print CUSTOM_CSS; ?>
++    <link rel="stylesheet" href="/brand/brand.css">
++    <script src="<?php print PATH_PREFIX; ?>assets/js/dark-mode.js"></script>
+ 
+     <?php print BRANDING_FAVICON; ?>
+   </head>
+@@ -18,35 +20,40 @@
+ 
+ <?php if(!Registry::get('username')) { ?>
+ 
+-    <div id="logincontainer" class="container">
+-        <div id="logo-lg"><img src="<?php print SITE_LOGO_LG; ?>" alt="Archive Logo Image" title="Login" /></div>
++    <button id="theme-toggle" type="button" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
++      <i class="bi bi-moon-fill" id="theme-icon"></i>
++    </button>
++
++    <div id="logincontainer">
++      <div id="logincard">
++        <span class="product-badge" aria-hidden="true"></span>
++        <div id="logo-lg" role="img" aria-label="<?php print BRANDING_TEXT; ?>" style="background-image: var(--brand-logo, url('<?php print SITE_LOGO_LG; ?>'));"></div>
++        <div class="product-chip"><span class="icon"></span>Archive</div>
+ 
+         <form name="login" action="index.php?route=login/foureyes" method="post" class="form-signin">
+ 
+-            <h2 class="fs-1 mb-3 fw-light">4eyes <?php print $text_login; ?></h2>
++            <h2>4eyes <?php print $text_login; ?></h2>
+ 
+-            <?php if(isset($x)){ ?><p class="alert alert-error lead"><?php print $x; ?></p><?php } ?>
++            <?php if(isset($x)){ ?><div class="alert alert-error" role="alert"><?php print $x; ?></div><?php } ?>
+             <input type="hidden" name="relocation" value="<?php if(isset($_GET['route']) && !preg_match("/^login/", $_GET['route']) ) { if(isset($_SERVER['REDIRECT_URL'])) { print $_SERVER['REDIRECT_URL']; } else { print $_SERVER['QUERY_STRING']; } } ?>" />
+-            <div class="form-floating">
+-              <input name="username" type="email" class="form-control" id="username" placeholder="name@example.com" required autofocus>
+-              <label for="floatingInput"><?php print $text_email; ?></label>
+-            </div>
+-            <div class="form-floating">
+-              <input name="password" type="password" class="form-control" id="password" placeholder="Password">
+-              <label for="floatingPassword"><?php print $text_password; ?></label>
+-            </div>
++
++            <label for="username" class="login-label"><?php print $text_email; ?></label>
++            <input name="username" type="email" class="form-control" id="username" placeholder="<?php print $text_email; ?>" autocomplete="username" required autofocus>
++            <label for="password" class="login-label"><?php print $text_password; ?></label>
++            <input name="password" type="password" class="form-control" id="password" placeholder="<?php print $text_password; ?>" autocomplete="current-password">
+ 
+         <?php if(CAPTCHA_FAILED_LOGIN_COUNT > 0 && $failed_login_count > CAPTCHA_FAILED_LOGIN_COUNT) { ?>
+             <img src="securimage/securimage_show.php" alt="captcha image" id="captcha" />
+-            <input type="text" class="input-block-level" name="captcha" placeholder="CAPTCHA" />
++            <input type="text" class="form-control" name="captcha" placeholder="CAPTCHA" autocomplete="off" />
+         <?php } ?>
+ 
+-            <button class="btn btn-large btn-primary w-100 mt-3 py-2" type="submit" value="<?php print $text_submit; ?>"><?php print $text_submit; ?></button>
+-            <button class="btn btn-large w-100 mt-3 py-2" type="reset" value="<?php print $text_cancel; ?>" onclick="document.location.href='logout.php';"><?php print $text_cancel; ?></button>
++            <button class="btn btn-primary" type="submit" value="<?php print $text_submit; ?>"><?php print $text_submit; ?></button>
++            <button class="btn" type="reset" value="<?php print $text_cancel; ?>" onclick="document.location.href='logout.php';"><?php print $text_cancel; ?></button>
+ 
+         </form>
+ 
+-   </div>
++      </div>
++    </div>
+ 
+ <?php } ?>
+ 
+diff -Naur a/piler-1.4.9/webui/templates/login/ga.tpl b/piler-1.4.9/webui/templates/login/ga.tpl
+--- piler-1.4.9/webui/templates/login/ga.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/login/ga.tpl	2026-09-26 12:25:06.806390191 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="en">
++<html lang="en" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+   <head>
+     <meta charset="utf-8">
+     <title><?php if($title_prefix) { print $title_prefix; ?> | <?php } ?><?php print $title; ?></title>
+@@ -10,36 +10,43 @@
+ 
+     <?php print CSS_CODE; ?>
+     <?php print CUSTOM_CSS; ?>
++    <link rel="stylesheet" href="/brand/brand.css">
++    <script src="<?php print PATH_PREFIX; ?>assets/js/dark-mode.js"></script>
+ 
+     <?php print BRANDING_FAVICON; ?>
+   </head>
+ 
++  <body id="loginpage">
+ 
+-<body class="loginpage">
+-
+-
+-    <div id="logincontainer" class="container">
+-        <div id="logo-lg"><img src="<?php print SITE_LOGO_LG; ?>" alt="Archive Logo Image" title="<?php print $text_login; ?>" /></div>
++    <button id="theme-toggle" type="button" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
++      <i class="bi bi-moon-fill" id="theme-icon"></i>
++    </button>
++
++    <div id="logincontainer">
++      <div id="logincard">
++        <span class="product-badge" aria-hidden="true"></span>
++        <div id="logo-lg" role="img" aria-label="<?php print BRANDING_TEXT; ?>" style="background-image: var(--brand-logo, url('<?php print SITE_LOGO_LG; ?>'));"></div>
++        <div class="product-chip"><span class="icon"></span>Archive</div>
+ 
+         <form name="login" action="<?php print PATH_PREFIX; ?>index.php?route=login/ga" method="post" class="form-signin" autocomplete="off">
+ 
+-            <h2 class="form-signin-heading"><?php print $text_enter_google_authenticator_code; ?></h2>
++            <h2><?php print $text_enter_google_authenticator_code; ?></h2>
+ 
+-            <?php if(isset($x)){ ?><p class="alert alert-error lead"><?php print $x; ?></p><?php } ?>
++            <?php if(isset($x)){ ?><div class="alert alert-error" role="alert"><?php print $x; ?></div><?php } ?>
+             <input type="hidden" name="relocation" value="<?php if(isset($_GET['route']) && !preg_match("/^login/", $_GET['route']) ) { if(isset($_SERVER['REDIRECT_URL'])) { print $_SERVER['REDIRECT_URL']; } else { print $_SERVER['QUERY_STRING']; } } ?>" />
+ 
+-            <input type="text" class="input-block-level bold" id="ga_code" name="ga_code" placeholder="<?php print $text_google_authenticator_code; ?>" required autofocus>
++            <label for="ga_code" class="login-label"><?php print $text_google_authenticator_code; ?></label>
++            <input type="text" class="form-control" id="ga_code" name="ga_code" placeholder="<?php print $text_google_authenticator_code; ?>" inputmode="numeric" autocomplete="one-time-code" required autofocus>
+ 
+-            <button class="btn btn-large btn-primary" type="submit" value="<?php print $text_submit; ?>"><?php print $text_submit; ?></button>
+-            <button class="btn btn-large" type="reset" value="<?php print $text_cancel; ?>" onclick="document.location.href='logout.php';"><?php print $text_cancel; ?></button>
++            <button class="btn btn-primary" type="submit" value="<?php print $text_submit; ?>"><?php print $text_submit; ?></button>
++            <button class="btn" type="reset" value="<?php print $text_cancel; ?>" onclick="document.location.href='logout.php';"><?php print $text_cancel; ?></button>
+ 
+         </form>
+ 
+-   </div>
+-
+-
++      </div>
++    </div>
+ 
+-<?php if(TRACKING_CODE) { print TRACKING_CODE; } ?>
++  <?php if(TRACKING_CODE) { print TRACKING_CODE; } ?>
+ 
+-</body>
++  </body>
+ </html>
+diff -Naur a/piler-1.4.9/webui/templates/login/login.tpl b/piler-1.4.9/webui/templates/login/login.tpl
+--- piler-1.4.9/webui/templates/login/login.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/login/login.tpl	2026-09-26 12:25:06.806128371 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="en">
++<html lang="en" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+   <head>
+     <meta charset="utf-8">
+     <title><?php if($title_prefix) { print $title_prefix; ?> | <?php } ?><?php print $title; ?></title>
+@@ -10,6 +10,8 @@
+ 
+     <?php print CSS_CODE; ?>
+     <?php print CUSTOM_CSS; ?>
++    <link rel="stylesheet" href="/brand/brand.css">
++    <script src="<?php print PATH_PREFIX; ?>assets/js/dark-mode.js"></script>
+ 
+     <?php print BRANDING_FAVICON; ?>
+   </head>
+@@ -18,57 +20,46 @@
+ 
+ <?php if(!Registry::get('username')) { ?>
+ 
+-    <div style="position: fixed; top: 20px; right: 20px; z-index: 1000;">
+-      <button id="theme-toggle" class="btn" style="background: transparent; border: 1px solid #ccc; padding: 8px 12px;" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
+-        <i class="bi bi-moon-fill" id="theme-icon" style="font-size: 20px;"></i>
+-      </button>
+-    </div>
+-
+-    <div id="logincontainer" class="container">
+-        <div id="logo-lg"><img src="<?php print SITE_LOGO_LG; ?>" alt="Archive Logo Image" title="Login" /></div>
++    <button id="theme-toggle" type="button" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
++      <i class="bi bi-moon-fill" id="theme-icon"></i>
++    </button>
++
++    <div id="logincontainer">
++      <div id="logincard">
++        <span class="product-badge" aria-hidden="true"></span>
++        <div id="logo-lg" role="img" aria-label="<?php print BRANDING_TEXT; ?>" style="background-image: var(--brand-logo, url('<?php print SITE_LOGO_LG; ?>'));"></div>
++        <div class="product-chip"><span class="icon"></span>Archive</div>
+ 
+         <form name="login" action="<?php print PATH_PREFIX; ?>login.php" method="post" class="form-signin">
+ 
+-            <h2 class="fs-1 mb-3 fw-light"><?php print $text_login; ?></h2>
++            <h2><?php print $text_login; ?></h2>
+ 
+-            <?php if(isset($x)){ ?><p class="alert alert-error lead"><?php print $x; ?></p><?php } ?>
++            <?php if(isset($x)){ ?><div class="alert alert-error" role="alert"><?php print $x; ?></div><?php } ?>
+             <input type="hidden" name="relocation" value="<?php if(isset($_GET['route']) && !preg_match("/^login/", $_GET['route']) ) { if(isset($_SERVER['REDIRECT_URL'])) { print $_SERVER['REDIRECT_URL']; } else { print $_SERVER['QUERY_STRING']; } } ?>" />
+ 
+-            <div class="form-floating">
+-              <input name="username" type="email" class="form-control" id="username" placeholder="name@example.com" required autofocus>
+-              <label for="floatingInput"><?php print $text_email; ?></label>
+-            </div>
+-            <div class="form-floating">
+-              <input name="password" type="password" class="form-control" id="password" placeholder="Password">
+-              <label for="floatingPassword"><?php print $text_password; ?></label>
+-            </div>
++            <label for="username" class="login-label"><?php print $text_email; ?></label>
++            <input name="username" type="email" class="form-control" id="username" placeholder="<?php print $text_email; ?>" autocomplete="username" required autofocus>
++            <label for="password" class="login-label"><?php print $text_password; ?></label>
++            <input name="password" type="password" class="form-control" id="password" placeholder="<?php print $text_password; ?>" autocomplete="current-password">
+ 
+         <?php if(CAPTCHA_FAILED_LOGIN_COUNT > 0 && $failed_login_count > CAPTCHA_FAILED_LOGIN_COUNT) { ?>
+             <img src="securimage/securimage_show.php" alt="captcha image" id="captcha" />
+-            <input type="text" class="input-block-level" name="captcha" placeholder="CAPTCHA" />
++            <input type="text" class="form-control" name="captcha" placeholder="CAPTCHA" autocomplete="off" />
+         <?php } ?>
+ 
+-            <button class="btn btn-large btn-primary w-100 mt-3 py-2" type="submit" value="<?php print $text_submit; ?>"><?php print $text_submit; ?></button>
++            <button class="btn btn-primary" type="submit" value="<?php print $text_submit; ?>"><?php print $text_submit; ?></button>
+ 
+         </form>
+ 
+-        <div class="container text-center">
+-          <div class="row align-items-start">
+-            <div class="col"></div>
+-            <div class="col mt-2 mb-3 text-body-secondary text-bg-light compatibility">
+-            <?php if(ENABLE_GOOGLE_LOGIN == 1) { ?>
+-               <p><a href="<?php print $auth_url; ?>"><?php print $text_login_via_google; ?></a></p>
+-            <?php } ?>
+-
+-              <p><?php print LOGIN_EXTRA_NOTES; ?></p>
+-            </div>
+-            <div class="col"></div>
+-          </div>
++        <div class="login-notes">
++        <?php if(ENABLE_GOOGLE_LOGIN == 1) { ?>
++            <p><a href="<?php print $auth_url; ?>"><?php print $text_login_via_google; ?></a></p>
++        <?php } ?>
++            <p><?php print LOGIN_EXTRA_NOTES; ?></p>
+         </div>
+ 
+-
+-
+-   </div>
++      </div>
++    </div>
+ 
+ <?php } ?>
+ 
+@@ -87,7 +78,6 @@
+ 
+     window.onload = getScreenSize
+   </script>
+-  <script src="<?php print PATH_PREFIX; ?>assets/js/dark-mode.js"></script>
+ 
+   </body>
+ </html>
+diff -Naur a/piler-1.4.9/webui/templates/login/logout.tpl b/piler-1.4.9/webui/templates/login/logout.tpl
+--- piler-1.4.9/webui/templates/login/logout.tpl	2024-01-01 00:00:00.000000000 +0100
++++ piler-1.4.9/webui/templates/login/logout.tpl	2026-09-26 12:25:06.806734562 +0200
+@@ -1,5 +1,5 @@
+ <!DOCTYPE html>
+-<html lang="en">
++<html lang="en" data-host="<?php print (preg_match('/^([a-z0-9.-]+)(:[0-9]+)?$/', strtolower($_SERVER['HTTP_HOST'] ?? ''), $m) ? htmlspecialchars($m[1]) : ''); ?>">
+   <head>
+     <meta charset="utf-8">
+     <title><?php if($title_prefix) { print $title_prefix; ?> | <?php } ?><?php print $title; ?></title>
+@@ -11,26 +11,29 @@
+ 
+     <?php print CSS_CODE; ?>
+     <?php print CUSTOM_CSS; ?>
++    <link rel="stylesheet" href="/brand/brand.css">
++    <script src="<?php print PATH_PREFIX; ?>assets/js/dark-mode.js"></script>
+ 
+     <?php print BRANDING_FAVICON; ?>
+   </head>
+ 
+ <body id="loginpage">
+ 
+-  <div style="position: fixed; top: 20px; right: 20px; z-index: 1000;">
+-    <button id="theme-toggle" class="btn" style="background: transparent; border: 1px solid #ccc; padding: 8px 12px;" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
+-      <i class="bi bi-moon-fill" id="theme-icon" style="font-size: 20px;"></i>
+-    </button>
+-  </div>
+-
+-  <div id="logincontainer" class="container">
++  <button id="theme-toggle" type="button" title="Toggle Dark Mode" aria-label="Toggle Dark Mode">
++    <i class="bi bi-moon-fill" id="theme-icon"></i>
++  </button>
++
++  <div id="logincontainer">
++    <div id="logincard">
++      <span class="product-badge" aria-hidden="true"></span>
++      <div id="logo-lg" role="img" aria-label="<?php print BRANDING_TEXT; ?>" style="background-image: var(--brand-logo, url('<?php print SITE_LOGO_LG; ?>'));"></div>
++      <div class="product-chip"><span class="icon"></span>Archive</div>
+       <h3><?php print $title; ?></h3>
+       <p><?php print $text_logged_out; ?>. <a href="<?php print PATH_PREFIX; if(ENABLE_SSO_LOGIN == 1) { ?>sso.php<?php } else { ?>login.php<?php } ?>" class="messagelink"><?php print $text_back; ?></a></p>
++    </div>
+   </div>
+ 
+ <?php if(TRACKING_CODE) { print TRACKING_CODE; } ?>
+ 
+-<script src="<?php print PATH_PREFIX; ?>assets/js/dark-mode.js"></script>
+-
+ </body>
+ </html>

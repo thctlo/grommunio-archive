@@ -1,0 +1,78 @@
+grommunio-archive for Debian
+============================
+
+grommunio Archive is piler (mailpiler.org) with grommunio's changes. Mail is
+copied to it by the MTA; it is stored encrypted and compressed, indexed with
+Sphinx and searched through a PHP web interface.
+
+The package installs the software but does not configure it. Run, as root,
+after the installation:
+
+    grommunio-archive-setup [-f FQDN] [-d DOMAIN] [-H dbhost] [-U dbuser] [-D dbname] [-P] [-F]
+
+It needs a running MariaDB/MySQL server on this host (or an existing empty
+database and user with -H/-U/-D and ARCHIVE_MYSQL_PASS in the environment) and
+does the following:
+
+  * creates the database "groarchive" and the user "groarchive" and loads the
+    schema with the archive users admin@local and auditor@local (their
+    generated passwords are shown once at the end, and written to
+    /var/log/grommunio-archive/setup.log, mode 0600: delete that file);
+  * writes /etc/grommunio-archive/grommunio-archive.conf (the daemons),
+    config-site.php (the web interface) and grommunio-archive.key (56 random
+    bytes; back it up: without it encrypted messages cannot be read);
+  * creates /etc/sphinx/sphinx.conf from the template and builds the search
+    index;
+  * enables and starts grommunio-archive-searchd, grommunio-archive-smtp and
+    grommunio-archive;
+  * wires Postfix (unless -P is given): always_bcc=archive@FQDN, a transport
+    entry that sends that address to 127.0.0.1:2693, and a pcre map that adds
+    an X-Envelope-To header. It needs the packages postfix-pcre and (for the
+    map type) postfix-lmdb or the default map type of your Postfix.
+    "grommunio-archive-setup -r" removes this wiring again.
+
+The setup refuses to overwrite an existing configuration without -F; the
+database and its users are kept in that case.
+
+Where things are
+----------------
+  web interface   https://FQDN/archive/  (nginx snippets from this package are
+                  in /usr/share/grommunio-common/nginx; PHP-FPM pool
+                  grommunio-archive, socket /run/php/php-grommunio-archive-fpm.sock;
+                  reload nginx and PHP-FPM after the installation)
+  archive SMTP    127.0.0.1:2693 (piler-smtp; set listen_addr in
+                  grommunio-archive.conf to change it, and use
+                  smtp.acl from /usr/share/grommunio-archive/dist to restrict)
+  search daemon   127.0.0.1:9312 and 9306 (Sphinx)
+  messages        /var/lib/grommunio-archive/store  (the archive itself)
+  configuration   /etc/grommunio-archive, /etc/sphinx/sphinx.conf
+  templates       /usr/share/grommunio-archive/dist
+  cron jobs       /etc/cron.d/grommunio-archive (index updates, purge,
+                  statistics; they need a cron daemon)
+  helper scripts  /usr/libexec/grommunio-archive
+
+Text extraction
+---------------
+The daemon extracts text from attachments with pdftotext (poppler-utils),
+catdoc (Word), catppt and xls2csv (PowerPoint and Excel, both from catdoc), unrtf
+(RTF) and tnef (winmail.dat). The alternative ppthtml (package xlhtml) is not
+available in Debian and is not needed.
+
+Security notes
+--------------
+The tools pilerget, pileraget, pilerimport, pilerexport, pilerstats, pilertest
+and reindex are setuid/setgid groarchive. They are installed 0755 and changed
+with dpkg-statoverride in the postinst; "dpkg-statoverride --list | grep piler"
+shows the entries, which are removed when the package is purged.
+
+Removal
+-------
+"apt remove" keeps everything. "apt purge" removes the package's files and
+the statoverrides, but keeps the archive (/var/lib/grommunio-archive), the
+configuration in /etc/grommunio-archive, the database and the encryption key:
+they are your data. Remove them by hand when the archive is really to go.
+
+Backup: the database "groarchive", /var/lib/grommunio-archive/store,
+/etc/grommunio-archive (especially grommunio-archive.key).
+
+ -- Louis van Belle <louis@van-belle.nl>, Thu, 24 Sep 2026

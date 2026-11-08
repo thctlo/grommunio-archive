@@ -1,0 +1,17 @@
+[Unit]
+Description=Sphinx search daemon for grommunio Archive
+Documentation=http://sphinxsearch.com/docs/
+After=network.target mariadb.service
+
+[Service]
+ExecStart=/usr/bin/searchd --nodetach --config /etc/sphinx/sphinx.conf
+ExecReload=/bin/kill -HUP $MAINPID
+RuntimeDirectory=grommunio-archive
+RuntimeDirectoryPreserve=yes
+RuntimeDirectoryMode=0775
+User=groarchive
+Group=groarchive
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

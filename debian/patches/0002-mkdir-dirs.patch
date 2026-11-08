@@ -1,0 +1,17 @@
+Description: Create the spool directory if it is missing.
+Author: grommunio <dev@grommunio.com>
+Origin: vendor
+Forwarded: not-needed
+Last-Update: 2026-09-24
+
+--- a/src/piler.c	2026-06-30 02:03:50.514072382 +0200
++++ b/src/piler.c	2026-06-30 02:09:01.362400399 +0200
+@@ -236,6 +236,8 @@
+    char fname[SMALLBUFSIZE];
+    struct stat st;
+ 
++   if (mkdir(directory, 0777) < 0 && errno != EEXIST)
++   	syslog(LOG_PRIORITY, "mkdir %s: %s", directory, strerror(errno));
+    dir = opendir(directory);
+    if(!dir){
+       syslog(LOG_PRIORITY, "cannot open directory: %s", directory);

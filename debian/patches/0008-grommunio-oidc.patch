@@ -1,0 +1,661 @@
+diff -Naur a/piler-1.4.9/config.php.in b/piler-1.4.9/config.php.in
+--- piler-1.4.9/config.php.in	2026-09-14 09:31:17.418203000 +0200
++++ piler-1.4.9/config.php.in	2026-09-16 15:00:11.203118000 +0200
+@@ -180,6 +180,21 @@
+ $config['GOOGLE_APPLICATION_NAME'] = 'piler enterprise email archiver';
+ $config['GOOGLE_ALL_MAIL'] = '[Gmail]/All Mail';
+ 
++// enable authentication against an OpenID Connect provider, eg. grommunio-auth (disabled by default)
++// setup-gk-app-g-archive fills in these settings in config-site.php
++
++$config['ENABLE_OIDC_LOGIN'] = 0;
++$config['OIDC_ISSUER'] = '';
++$config['OIDC_CLIENT_ID'] = '';
++$config['OIDC_CLIENT_SECRET'] = '';
++$config['OIDC_SCOPE'] = 'openid email profile';
++// send unauthenticated users straight to the provider; login.php?local=1 still shows the local form
++$config['OIDC_AUTO_LOGIN'] = 0;
++// login button label for languages without a text_login_via_sso translation
++$config['OIDC_BUTTON_TEXT'] = 'Sign in with single sign-on';
++// claim whose true value grants the admin role, eg. 'archive_admin' (empty: never)
++$config['OIDC_ADMIN_CLAIM'] = '';
++
+ // Mailcow
+ 
+ $config['MAILCOW_API_KEY'] = '';
+diff -Naur a/piler-1.4.9/webui/assets/css/grommunio-login.css b/piler-1.4.9/webui/assets/css/grommunio-login.css
+--- piler-1.4.9/webui/assets/css/grommunio-login.css	2026-09-14 09:31:18.426122000 +0200
++++ piler-1.4.9/webui/assets/css/grommunio-login.css	2026-09-16 15:01:14.209125000 +0200
+@@ -459,6 +459,32 @@
+   box-shadow: 0 0 0 2px var(--gl-surface), 0 0 0 4px var(--gl-primary);
+ }
+ 
++/* Single sign-on button above the local form and the "or" divider between them */
++body#loginpage a.btn,
++body#loginpage a.btn:hover {
++  text-decoration: none;
++}
++
++body#loginpage .btn-sso {
++  margin: 0;
++}
++
++body#loginpage .login-divider {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  margin: 14px 0;
++  font-size: 12px;
++  color: var(--gl-muted);
++}
++
++body#loginpage .login-divider::before,
++body#loginpage .login-divider::after {
++  content: "";
++  flex: 1;
++  border-top: 1px solid var(--gl-field-hover);
++}
++
+ /* Notes below the form (Google login link, LOGIN_EXTRA_NOTES) */
+ body#loginpage .login-notes {
+   margin: 0;
+diff -Naur a/piler-1.4.9/webui/controller/login/logout.php b/piler-1.4.9/webui/controller/login/logout.php
+--- piler-1.4.9/webui/controller/login/logout.php	2026-09-14 09:31:19.434041000 +0200
++++ piler-1.4.9/webui/controller/login/logout.php	2026-09-16 15:02:17.215132000 +0200
+@@ -23,8 +23,20 @@
+          $this->model_saas_customer->offline($session->get('email'));
+       }
+ 
++      // RP-initiated logout ends the provider session as well; the session is gone after logout()
++      $oidc_logout_url = '';
++      if(ENABLE_OIDC_LOGIN == 1 && $session->get("oidc_id_token")) {
++         $oidc = new OIDC();
++         $oidc_logout_url = $oidc->logout_url($session->get("oidc_id_token"));
++      }
++
+       logout();
+ 
++      if($oidc_logout_url) {
++         header("Location: " . $oidc_logout_url);
++         exit;
++      }
++
+       $this->render();
+    }
+ 
+diff -Naur a/piler-1.4.9/webui/controller/login/oidc.php b/piler-1.4.9/webui/controller/login/oidc.php
+--- piler-1.4.9/webui/controller/login/oidc.php	1970-01-01 01:00:00.000000000 +0100
++++ piler-1.4.9/webui/controller/login/oidc.php	2026-09-16 16:12:41.221139000 +0200
+@@ -0,0 +1,117 @@
++<?php
++
++
++class ControllerLoginOidc extends Controller {
++   private $error = array();
++
++   public function index(){
++
++      $this->id = "content";
++      $this->template = "login/login.tpl";
++      $this->layout = "common/layout-empty";
++
++
++      if(Registry::get('username')) {
++         header('Location: ' . SITE_URL . 'search.php');
++         exit;
++      }
++
++
++      $request = Registry::get('request');
++      $session = Registry::get('session');
++
++      $this->load->model('user/auth');
++      $this->load->model('user/user');
++      $this->load->model('user/prefs');
++      $this->load->model('domain/domain');
++      $this->load->model('folder/folder');
++
++      if(ENABLE_SAAS == 1) {
++         $this->load->model('saas/customer');
++      }
++
++      $this->data['title'] = $this->data['text_login'];
++      $this->data['title_prefix'] = TITLE_PREFIX;
++
++      $this->data['failed_login_count'] = $this->model_user_auth->get_failed_login_count();
++
++      $oidc = new OIDC();
++
++      // the provider sent the browser back with an error, eg. access_denied
++      if(isset($request->get['error'])) {
++         LOGGER('oidc login failed: ' . $request->get['error']);
++         $this->data['x'] = $this->data['text_login_failed'];
++         $this->render();
++         return;
++      }
++
++      // only strings are acceptable, code[]=x would trip up hash_equals()
++      $code = is_string($request->get['code'] ?? null) ? $request->get['code'] : '';
++      $state = is_string($request->get['state'] ?? null) ? $request->get['state'] : '';
++
++      if($code == '') {
++         $url = $oidc->login_url();
++
++         if($url == '') {
++            syslog(LOG_ERR, 'oidc: ' . $oidc->get_error());
++            $this->data['x'] = $this->data['text_login_failed'];
++            $this->render();
++            return;
++         }
++
++         header("Location: " . $url);
++         exit;
++      }
++
++      $claims = $oidc->handle_callback($code, $state);
++
++      $data = $claims ? $this->model_user_auth->checkLoginOIDC($claims) : array();
++
++      if(!isset($data['username'])) {
++         $email = strtolower($claims['email'] ?? '');
++
++         LOGGER('oidc login failed' . ($oidc->get_error() ? ': ' . $oidc->get_error() : ''), $email);
++         AUDIT(ACTION_LOGIN_FAILED, $email, '', '', 'failed auth against OIDC');
++
++         $this->data['x'] = $this->data['text_invalid_email_or_password'];
++         $this->render();
++         return;
++      }
++
++      AUDIT(ACTION_LOGIN, $data['username'], '', '', 'successful auth against OIDC');
++
++      $session->set("auth_data", $data);
++      $session->set("oidc_id_token", $oidc->get_id_token());
++
++      if($session->get("ga_block") == 1) {
++         header("Location: " . SITE_URL . "index.php?route=login/ga");
++         exit;
++      }
++
++      $this->model_user_auth->apply_user_auth_session($data);
++      $session->remove("auth_data");
++
++      $this->model_user_prefs->get_user_preferences($session->get('username'));
++
++      if(ENABLE_SAAS == 1) {
++         $this->model_saas_customer->online($session->get('email'));
++      }
++
++      LOGGER('logged in');
++
++      if(isAdminUser() == 1) {
++         header("Location: " . SITE_URL . "index.php?route=health/health");
++         exit;
++      } else if(isDataOfficer() == 1) {
++         header("Location: " . SITE_URL . "index.php?route=audit/removal");
++         exit;
++      }
++
++      header("Location: " . SITE_URL . "search.php");
++      exit;
++   }
++
++
++}
++
++?>
+diff -Naur a/piler-1.4.9/webui/index.php b/piler-1.4.9/webui/index.php
+--- piler-1.4.9/webui/index.php	2026-09-14 09:31:21.449879000 +0200
++++ piler-1.4.9/webui/index.php	2026-09-16 15:04:23.227146000 +0200
+@@ -94,6 +94,13 @@
+    if(ENABLE_GOOGLE_LOGIN == 1 && isset($request->get['route']) && $request->get['route'] == 'login/google') {
+       $action = new Router('login/google');
+    }
++   else if(ENABLE_OIDC_LOGIN == 1 && isset($request->get['route']) && $request->get['route'] == 'login/oidc') {
++      $action = new Router('login/oidc');
++   }
++   else if(ENABLE_OIDC_LOGIN == 1 && OIDC_AUTO_LOGIN == 1 && $request->server['REQUEST_METHOD'] == 'GET' && !isset($request->get['local']) && ($request->get['route'] ?? '') != 'login/logout') {
++      // straight to the provider; login.php?local=1 still shows the local form
++      $action = new Router('login/oidc');
++   }
+    else if(ENABLE_SSO_LOGIN == 1) {
+       if(isset($request->get['route']) && $request->get['route'] == 'login/login') {
+          $action = new Router('login/login');
+diff -Naur a/piler-1.4.9/webui/language/de/messages.php b/piler-1.4.9/webui/language/de/messages.php
+--- piler-1.4.9/webui/language/de/messages.php	2026-09-14 09:31:22.457798000 +0200
++++ piler-1.4.9/webui/language/de/messages.php	2026-09-16 15:05:26.233153000 +0200
+@@ -193,8 +193,10 @@
+ $_['text_login2'] = "Anmeldung";
+ $_['text_login_failed'] = "Anmeldung gescheitert";
+ $_['text_login_via_google'] = "Mit Google-Konto anmelden";
++$_['text_login_via_sso'] = "Mit Single Sign-on anmelden";
+ $_['text_logout'] = "Abmeldung";
+ $_['text_logout2'] = "Abmeldung";
++$_['text_or'] = "oder";
+ 
+ $_['text_maillog_status'] = "Sammelstatus Maillogbuch";
+ $_['text_main_title'] = "Piler Benutzeroberfläche";
+diff -Naur a/piler-1.4.9/webui/language/en/messages.php b/piler-1.4.9/webui/language/en/messages.php
+--- piler-1.4.9/webui/language/en/messages.php	2026-09-14 09:31:23.465717000 +0200
++++ piler-1.4.9/webui/language/en/messages.php	2026-09-16 15:00:29.239160000 +0200
+@@ -212,8 +212,10 @@
+ $_['text_login2'] = "login";
+ $_['text_login_failed'] = "login failed";
+ $_['text_login_via_google'] = "Login via Google account";
++$_['text_login_via_sso'] = "Sign in with single sign-on";
+ $_['text_logout'] = "Logout";
+ $_['text_logout2'] = "logout";
++$_['text_or'] = "or";
+ 
+ $_['text_maillog_status'] = "maillog collector status";
+ $_['text_main_title'] = "clapf web UI";
+diff -Naur a/piler-1.4.9/webui/model/user/auth.php b/piler-1.4.9/webui/model/user/auth.php
+--- piler-1.4.9/webui/model/user/auth.php	2026-09-14 09:31:24.473636000 +0200
++++ piler-1.4.9/webui/model/user/auth.php	2026-09-16 15:01:32.245167000 +0200
+@@ -485,6 +485,44 @@
+    }
+ 
+ 
++   /*
++    * The claims come from a verified OpenID Connect id_token (system/oidc.php),
++    * so the user is trusted like after a successful imap login
++    */
++
++   public function checkLoginOIDC($claims = array()) {
++      $role = 0;
++
++      $email = strtolower($claims['email'] ?? '');
++
++      if(!strchr($email, '@')) { $email = strtolower($claims['preferred_username'] ?? ''); }
++
++      if(!validemail($email)) { return array(); }
++
++      if(OIDC_ADMIN_CLAIM && filter_var($claims[OIDC_ADMIN_CLAIM] ?? false, FILTER_VALIDATE_BOOLEAN)) { $role = 1; }
++
++      $emails = array($email);
++
++      if(CUSTOM_EMAIL_QUERY_FUNCTION && function_exists(CUSTOM_EMAIL_QUERY_FUNCTION)) {
++         $result = call_user_func(CUSTOM_EMAIL_QUERY_FUNCTION, $email);
++         if(is_array($result) && count($result) > 0) {
++            $emails = array_values(array_unique(array_merge($emails, $result)));
++         }
++      }
++
++      $extra_emails = $this->model_user_user->get_email_addresses_from_groups($emails);
++      $emails = array_merge($emails, $extra_emails);
++
++      $data = $this->fix_user_data($claims['name'] ?? $email, $email, $emails, $role);
++
++      $data['folders'] = $this->model_folder_folder->get_folder_id_array_for_user($data['uid'], $role);
++
++      $this->is_ga_code_needed($email);
++
++      return $data;
++   }
++
++
+    public function get_sso_user() {
+       if(!isset($_SERVER['REMOTE_USER']) || $_SERVER['REMOTE_USER'] == '') { return ''; }
+ 
+diff -Naur a/piler-1.4.9/webui/system/oidc.php b/piler-1.4.9/webui/system/oidc.php
+--- piler-1.4.9/webui/system/oidc.php	1970-01-01 01:00:00.000000000 +0100
++++ piler-1.4.9/webui/system/oidc.php	2026-09-16 15:02:35.251174000 +0200
+@@ -0,0 +1,330 @@
++<?php
++
++/*
++ * OpenID Connect relying party for the login/oidc controller:
++ * authorization code flow with PKCE, id_token verification (RS256)
++ * and RP-initiated logout.
++ */
++
++class OIDC {
++   private $issuer;
++   private $client_id;
++   private $client_secret;
++   private $scope;
++   private $redirect_uri;
++   private $id_token = '';
++   private $error = '';
++
++
++   public function __construct() {
++      $this->issuer = rtrim(OIDC_ISSUER, '/');
++      $this->client_id = OIDC_CLIENT_ID;
++      $this->client_secret = OIDC_CLIENT_SECRET;
++      $this->scope = OIDC_SCOPE;
++      $this->redirect_uri = SITE_URL . 'index.php?route=login/oidc';
++   }
++
++
++   public function get_error() {
++      return $this->error;
++   }
++
++
++   public function get_id_token() {
++      return $this->id_token;
++   }
++
++
++   public function login_url() {
++      $session = Registry::get('session');
++
++      $config = $this->discovery();
++      if(!$config) { return ''; }
++
++      $state = bin2hex(random_bytes(16));
++      $nonce = bin2hex(random_bytes(16));
++      $verifier = $this->base64url_encode(random_bytes(32));
++
++      $session->set("oidc_state", $state);
++      $session->set("oidc_nonce", $nonce);
++      $session->set("oidc_verifier", $verifier);
++
++      $params = array(
++         'response_type' => 'code',
++         'client_id' => $this->client_id,
++         'redirect_uri' => $this->redirect_uri,
++         'scope' => $this->scope,
++         'state' => $state,
++         'nonce' => $nonce,
++         'code_challenge' => $this->base64url_encode(hash('sha256', $verifier, true)),
++         'code_challenge_method' => 'S256'
++      );
++
++      return $config['authorization_endpoint'] . '?' . http_build_query($params);
++   }
++
++
++   /*
++    * Exchange the authorization code for tokens, verify the id_token
++    * and return its claims merged with the userinfo response
++    */
++
++   public function handle_callback($code = '', $state = '') {
++      $session = Registry::get('session');
++
++      $expected_state = $session->get("oidc_state");
++      $nonce = $session->get("oidc_nonce");
++      $verifier = $session->get("oidc_verifier");
++
++      $session->remove("oidc_state");
++      $session->remove("oidc_nonce");
++      $session->remove("oidc_verifier");
++
++      if($code == '' || $state == '' || $expected_state == '' || !hash_equals($expected_state, $state)) {
++         $this->error = 'state mismatch';
++         return array();
++      }
++
++      $config = $this->discovery();
++      if(!$config) { return array(); }
++
++      $token = $this->http_request($config['token_endpoint'], array(
++         'grant_type' => 'authorization_code',
++         'code' => $code,
++         'redirect_uri' => $this->redirect_uri,
++         'client_id' => $this->client_id,
++         'client_secret' => $this->client_secret,
++         'code_verifier' => $verifier
++      ));
++
++      if(!isset($token['id_token']) || !isset($token['access_token'])) {
++         $this->error = 'token request failed' . (isset($token['error']) ? ': ' . $token['error'] : '');
++         return array();
++      }
++
++      $claims = $this->verify_id_token($token['id_token'], $config, $nonce);
++      if(!$claims) { return array(); }
++
++      if(isset($config['userinfo_endpoint'])) {
++         $userinfo = $this->http_request($config['userinfo_endpoint'], array(), $token['access_token']);
++
++         // OpenID Connect core 5.3.2: only trust userinfo for the same subject
++         if(isset($userinfo['sub']) && $userinfo['sub'] === $claims['sub']) {
++            $claims = array_merge($claims, $userinfo);
++         }
++      }
++
++      $this->id_token = $token['id_token'];
++
++      return $claims;
++   }
++
++
++   public function logout_url($id_token = '') {
++      $config = $this->discovery();
++
++      if(!isset($config['end_session_endpoint'])) { return ''; }
++
++      $params = array(
++         'client_id' => $this->client_id,
++         'post_logout_redirect_uri' => SITE_URL
++      );
++
++      if($id_token) { $params['id_token_hint'] = $id_token; }
++
++      return $config['end_session_endpoint'] . '?' . http_build_query($params);
++   }
++
++
++   // provider metadata, cached in the session for an hour
++
++   private function discovery() {
++      $session = Registry::get('session');
++
++      $cached = $session->get("oidc_discovery");
++
++      if(is_array($cached) && isset($cached['config']) && isset($cached['expires']) && $cached['expires'] > NOW) {
++         return $cached['config'];
++      }
++
++      $config = $this->http_request($this->issuer . '/.well-known/openid-configuration');
++
++      if(!isset($config['issuer']) || !isset($config['authorization_endpoint']) || !isset($config['token_endpoint']) || !isset($config['jwks_uri'])) {
++         $this->error = 'cannot fetch the openid configuration from ' . $this->issuer;
++         return array();
++      }
++
++      if(rtrim($config['issuer'], '/') != $this->issuer) {
++         $this->error = 'issuer mismatch: ' . $config['issuer'];
++         return array();
++      }
++
++      $session->set("oidc_discovery", array('expires' => NOW + 3600, 'config' => $config));
++
++      return $config;
++   }
++
++
++   private function verify_id_token($jwt = '', $config = array(), $nonce = '') {
++      $parts = explode('.', $jwt);
++
++      if(count($parts) != 3) {
++         $this->error = 'malformed id_token';
++         return array();
++      }
++
++      $header = json_decode($this->base64url_decode($parts[0]), true);
++      $claims = json_decode($this->base64url_decode($parts[1]), true);
++      $signature = $this->base64url_decode($parts[2]);
++
++      if(!is_array($header) || !is_array($claims) || $signature == '') {
++         $this->error = 'malformed id_token';
++         return array();
++      }
++
++      if(($header['alg'] ?? '') != 'RS256') {
++         $this->error = 'unsupported id_token algorithm: ' . ($header['alg'] ?? '');
++         return array();
++      }
++
++      $key = $this->get_signing_key($config['jwks_uri'], $header['kid'] ?? '');
++      if($key == '') { return array(); }
++
++      if(openssl_verify($parts[0] . '.' . $parts[1], $signature, $key, OPENSSL_ALGO_SHA256) !== 1) {
++         $this->error = 'invalid id_token signature';
++         return array();
++      }
++
++      if(rtrim($claims['iss'] ?? '', '/') != $this->issuer) {
++         $this->error = 'id_token issuer mismatch';
++         return array();
++      }
++
++      $aud = (array)($claims['aud'] ?? array());
++
++      if(!in_array($this->client_id, $aud, true) || (isset($claims['azp']) && $claims['azp'] !== $this->client_id)) {
++         $this->error = 'id_token audience mismatch';
++         return array();
++      }
++
++      if(!isset($claims['exp']) || $claims['exp'] < NOW) {
++         $this->error = 'id_token expired';
++         return array();
++      }
++
++      if($nonce == '' || !isset($claims['nonce']) || !hash_equals($nonce, (string)$claims['nonce'])) {
++         $this->error = 'id_token nonce mismatch';
++         return array();
++      }
++
++      if(!isset($claims['sub']) || $claims['sub'] === '') {
++         $this->error = 'id_token without subject';
++         return array();
++      }
++
++      return $claims;
++   }
++
++
++   // PEM encoded public key of the JWKS entry matching the token's kid
++
++   private function get_signing_key($jwks_uri = '', $kid = '') {
++      $jwks = $this->http_request($jwks_uri);
++
++      foreach($jwks['keys'] ?? array() as $jwk) {
++         if(($jwk['kty'] ?? '') != 'RSA' || !isset($jwk['n']) || !isset($jwk['e'])) { continue; }
++         if(isset($jwk['use']) && $jwk['use'] != 'sig') { continue; }
++         if($kid != '' && ($jwk['kid'] ?? '') != $kid) { continue; }
++
++         return $this->jwk_to_pem($jwk['n'], $jwk['e']);
++      }
++
++      $this->error = 'no matching signing key at ' . $jwks_uri;
++
++      return '';
++   }
++
++
++   // DER encode the RSA modulus and exponent as SubjectPublicKeyInfo for openssl_verify()
++
++   private function jwk_to_pem($n = '', $e = '') {
++      $rsa_public_key = $this->der("\x30", $this->der_integer($this->base64url_decode($n)) . $this->der_integer($this->base64url_decode($e)));
++
++      // rsaEncryption OID with NULL parameters
++      $algorithm = "\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00";
++
++      $spki = $this->der("\x30", $algorithm . $this->der("\x03", "\x00" . $rsa_public_key));
++
++      return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($spki), 64, "\n") . "-----END PUBLIC KEY-----\n";
++   }
++
++
++   private function der_integer($bytes = '') {
++      $bytes = ltrim($bytes, "\x00");
++
++      // a leading zero keeps values with the top bit set positive
++      if($bytes == '' || (ord($bytes[0]) & 0x80)) { $bytes = "\x00" . $bytes; }
++
++      return $this->der("\x02", $bytes);
++   }
++
++
++   private function der($tag = '', $content = '') {
++      $len = strlen($content);
++
++      if($len < 0x80) {
++         $length = chr($len);
++      }
++      else {
++         $bytes = ltrim(pack('N', $len), "\x00");
++         $length = chr(0x80 | strlen($bytes)) . $bytes;
++      }
++
++      return $tag . $length . $content;
++   }
++
++
++   private function http_request($url = '', $post = array(), $bearer = '') {
++      $ch = curl_init();
++
++      $headers = array('Accept: application/json');
++      if($bearer) { $headers[] = 'Authorization: Bearer ' . $bearer; }
++
++      curl_setopt($ch, CURLOPT_URL, $url);
++      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
++      curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
++      curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
++      curl_setopt($ch, CURLOPT_TIMEOUT, 30);
++
++      if(count($post) > 0) {
++         curl_setopt($ch, CURLOPT_POST, true);
++         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post));
++      }
++
++      if(defined('ENABLE_SSL_VERIFY') && ENABLE_SSL_VERIFY == 0) {
++         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
++         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
++      }
++
++      $ret = curl_exec($ch);
++
++      if($ret === false) {
++         $this->error = 'request to ' . $url . ' failed: ' . curl_error($ch);
++      }
++
++      $data = json_decode((string)$ret, true);
++
++      return is_array($data) ? $data : array();
++   }
++
++
++   private function base64url_encode($s = '') {
++      return rtrim(strtr(base64_encode($s), '+/', '-_'), '=');
++   }
++
++
++   private function base64url_decode($s = '') {
++      return (string)base64_decode(strtr($s, '-_', '+/'), true);
++   }
++
++}
+diff -Naur a/piler-1.4.9/webui/system/startup.php b/piler-1.4.9/webui/system/startup.php
+--- piler-1.4.9/webui/system/startup.php	2026-09-14 09:31:26.489474000 +0200
++++ piler-1.4.9/webui/system/startup.php	2026-09-16 15:03:38.257181000 +0200
+@@ -18,6 +18,10 @@
+    require_once DIR_BASE . 'google-api/contrib/apiOauth2Service.php';
+ }
+ 
++if(ENABLE_OIDC_LOGIN == 1) {
++   require_once(DIR_SYSTEM . "/oidc.php");
++}
++
+ if(TSA_URL) {
+    require_once(DIR_SYSTEM . "/helper/TrustedTimestamps.php");
+ }
+diff -Naur a/piler-1.4.9/webui/templates/login/login.tpl b/piler-1.4.9/webui/templates/login/login.tpl
+--- piler-1.4.9/webui/templates/login/login.tpl	2026-09-14 09:31:27.497393000 +0200
++++ piler-1.4.9/webui/templates/login/login.tpl	2026-09-16 15:04:41.263188000 +0200
+@@ -35,6 +35,10 @@
+             <h2><?php print $text_login; ?></h2>
+ 
+             <?php if(isset($x)){ ?><div class="alert alert-error" role="alert"><?php print $x; ?></div><?php } ?>
++        <?php if(ENABLE_OIDC_LOGIN == 1) { ?>
++            <a class="btn btn-primary btn-sso" href="<?php print PATH_PREFIX; ?>index.php?route=login/oidc"><?php print $text_login_via_sso ?? OIDC_BUTTON_TEXT; ?></a>
++            <div class="login-divider"><span><?php print $text_or ?? 'or'; ?></span></div>
++        <?php } ?>
+             <input type="hidden" name="relocation" value="<?php if(isset($_GET['route']) && !preg_match("/^login/", $_GET['route']) ) { if(isset($_SERVER['REDIRECT_URL'])) { print $_SERVER['REDIRECT_URL']; } else { print $_SERVER['QUERY_STRING']; } } ?>" />
+ 
+             <label for="username" class="login-label"><?php print $text_email; ?></label>
