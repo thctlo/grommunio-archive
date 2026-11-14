@@ -1,3 +1,15 @@
+grommunio-archive (1.4.9-6) trixie; urgency=medium
+
+  * Rebuild from the current openSUSE community source (lp160.5.15, up from
+    our previous lp160.5.14 baseline). Diffed every file in both source
+    RPMs directly: the upstream tarball and every patch are byte-identical
+    to our last build - the only change anywhere is the spec file's own
+    Release: field. No functional change at all. Rebuilt to exercise the
+    new repo-setup/publish-to-server.sh + refresh-personal-repo.sh
+    publishing flow end to end, not because anything needed fixing.
+
+ -- the operator van Belle <the operator@example1.nl>  Sun, 15 Nov 2026 01:00:00 +0100
+
 grommunio-archive (1.4.9-5) trixie; urgency=medium
 
   * Rebuild from the current openSUSE community source (lp160.5.14, up from
