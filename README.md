@@ -1,82 +1,57 @@
-# grommunio-archive (Debian packaging)
+![test workflow](https://github.com/jsuto/piler/actions/workflows/test.yaml/badge.svg)
 
-Debian packaging for grommunio Archive — [grommunio](https://grommunio.com/)'s
-rebrand and extension of [Piler](https://piler.io/) ([jsuto/piler](https://github.com/jsuto/piler))
-for long-term email archiving, integrated with grommunio's own
-authentication, Keycloak/OIDC SSO, and Postfix copy-to-archive setup.
+# piler email archiver
 
-## Platform
+piler is an open source email archival application. Please visit https://www.mailpiler.org/ for more.
 
-Built and packaged for Debian 13 (trixie); not tested on other
-distributions or Debian releases.
+## Features
 
-## Repository structure
+- built-in smtp server
+- archival rules
+- retention rules
+- legal hold
+- message and attachment deduplication
+- message compression
+- message encryption
+- digital fingerprinting and verification
+- full text search
+- simple and expert search
+- save search criteria
+- tagging emails
+- view, export, restore emails
+- bulk import/export messages
+- access control
+- AD / LDAP authentication
+- IMAP, POP3 authentication
+- single sign-on (SSO)
+- Google Apps support
+- Office 365 support
+- STARTTLS support
+- Google Authenticator support for 2-factor authentication
+- i18n
+- customisable theme
+- audit logs
+- search in audit logs
+- online status info
+- accounting
+- recognised formats: EML, Maildir, mailbox
 
-This repository contains both the upstream Piler source and the
-Debian packaging on top of it:
+## Build a deb package for Ubuntu 24.04 LTS
 
-- **`upstream` branch** — piler's own git history, unmodified, from
-  [jsuto/piler](https://github.com/jsuto/piler), currently at tag
-  `piler-1.4.9`. Piler's own README is kept as `README.upstream.md`
-  (this file would otherwise be overwritten by a merge from that
-  branch).
-- **`main` branch** (this one) — the `upstream` branch merged with
-  `debian/` (patches, changelog, maintainer scripts, systemd units)
-  added on top. This is what gets packaged.
-
-Grommunio itself does not publish Piler as git (only as a patched
-source RPM in their community repository), so this repo clones real
-upstream directly and tracks grommunio's patches as our own
-`debian/patches/` on top of it, instead of only carrying the
-packaging and fetching the source tarball separately at build time.
-
-## What the patches do
-
-Most patches in `debian/patches/` are carried forward unchanged from
-grommunio's own community packaging (branding, web UI paths,
-spool/directory creation, the OIDC login flow, the 2FA/four-eyes login
-page). A few are specific to this packaging:
-
-- **`0006-debian-mysql-socket.patch`** — points at Debian's own MySQL
-  socket path instead of the RPM-distribution default.
-- **`0009-audit-mysql-without-rt.patch`** — real bugfix: Piler 1.4.6
-  moved the audit trail to the Manticore real-time (RT) index and
-  returns early when `RT=0`. An install using the plain Sphinx index
-  (`RT=0`, the Debian default here) silently lost the audit viewer,
-  CSV export, and per-hour download/restore limits, since they read an
-  index that never existed. With `RT=0`, this reads/writes the MySQL
-  audit table instead, as Piler 1.3.x did; `RT=1` installs are
-  unaffected.
-
-See `debian/changelog` for the full history, including an earlier fix
-to the community's own `use_libxls.patch` (dropped in favor of
-catdoc's `xls2csv`, which actually takes its arguments in the order
-Piler calls it with — the libxls tool's `xls2csv` does not).
-
-## Building
+Clone the repo, and the following command in the repo root:
 
 ```
-dpkg-source -b .
-sbuild <resulting>.dsc
+      docker run --rm \
+           --security-opt apparmor=unconfined \
+           -e PROJECT_ID=piler \
+           -e DISTRO=noble \
+           -e ARCH=amd64 \
+           -e VERSION=1.4.8 \
+           -e COMMIT_ID=deadbeef \
+           -e BUILD_NUMBER=1234 \
+           -v $PWD:/repo \
+           -v $PWD/docker:/data \
+           sutoj/builder:noble
 ```
 
-(Run from a checkout of the `main` branch — the source tree and
-`debian/` are both already here, no separate tarball fetch needed.)
-
-## Updating to a newer piler release
-
-```
-git fetch piler-upstream tag piler-1.4.X
-git branch -f upstream piler-1.4.X
-git checkout main
-git merge upstream
-# resolve any conflicts in README.upstream.md/.gitignore if upstream changed them,
-# rebase debian/patches/ against the new source, bump debian/changelog
-```
-
-## Provenance
-
-Packaging and the patches listed above: the operator van Belle. Everything
-else carried forward from grommunio's own community packaging - see
-`debian/copyright` for the full attribution, including upstream
-Piler's own (jsuto, sj@acts.hu).
+This works for any branch, not just master.

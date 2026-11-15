@@ -1,5 +1,6 @@
 0001-dont-check-user-build-phase.patch
 0002-mkdir-dirs.patch
+0003-replace-readme-with-packaging-readme.patch
 0004-grommunio.patch
 0005-sphinx-workers-threads.patch
 0006-debian-mysql-socket.patch
